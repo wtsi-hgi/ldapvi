@@ -280,6 +280,41 @@ update_clean_copy(GArray *offsets, char *key, FILE *s, tentry *cleanentry)
 	print_entry_object(s, cleanentry, key);
 }
 
+int
+nonleaf_action(tentry *entry, GArray *offsets, int n)
+{
+	int i;
+
+	printf("Error: Cannot delete non-leaf entry: %s\n", entry_dn(entry));
+
+	for (i = n + 1; i < offsets->len; i++) {
+		if (g_array_index(offsets, long, n) >= 0)
+			goto more_deletions;
+	}
+	/* no more deletions anyway, so no need to ignore this one */
+	return 0;
+
+more_deletions:
+	switch (choose("Continue?", "yn!Q?", "(Type '?' for help.)")) {
+	case 'y':
+		return 1;
+	case '!':
+		return 2;
+	case 'n':
+		return 0;
+	case 'Q':
+		exit(0);
+	case '?':
+		puts("Commands:\n"
+		     "  y -- continue deleting other entries\n"
+		     "  ! -- continue and assume 'y' until done\n"
+		     "  n -- abort deletions\n"
+		     "  Q -- discard changes and quit\n"
+		     "  ? -- this help");
+		break;
+	}
+}
+
 /*
  * Die compare_streams-Schleife ist das Herz von ldapvi.
  *
@@ -334,6 +369,9 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 	char *ptr;
 	LDAPMod **mods;
 	int rc = -1;
+	int n_leaf;
+	int n_nonleaf;
+	int ignore_nonleaf = 0;
 
 	for (;;) {
 		long datapos;
@@ -430,19 +468,49 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 	if ( (*error_position = ftell(data)) == -1) syserr();
 
 	/* find deleted entries */
-	for (n = 0; n < offsets->len; n++)
-		if ( (pos = g_array_index(offsets, long, n)) >= 0) {
+	do {
+		if (ignore_nonleaf)
+			printf("Retrying %d failed deletion%s...\n",
+			       n_nonleaf,
+			       n_nonleaf == 1 ? "" : "s");
+		n_leaf = 0;
+		n_nonleaf = 0;
+		for (n = 0; n < offsets->len; n++) {
+			if ( (pos = g_array_index(offsets, long, n)) < 0)
+				continue;
 			if (read_entry(clean, pos, 0, &cleanentry, 0) == -1)
 				abort();
-			if (handler(cleanentry, 0, 0, userdata) == -1) {
+			switch (handler(cleanentry, 0, 0, userdata)) {
+			case -1:
 				rc = -2;
 				goto cleanup;
+			case -2:
+				if (ignore_nonleaf) {
+					printf("Skipping non-leaf entry: %s\n",
+					       entry_dn(cleanentry));
+					n_nonleaf++;
+					break;
+				}
+				switch (nonleaf_action(cleanentry,offsets,n)) {
+				case 0:
+					rc = -2;
+					goto cleanup;
+				case 2:
+					ignore_nonleaf = 1;
+					/* fall through */
+				case 1:
+					n_nonleaf++;
+				}
+				break;
+			default:
+				n_leaf++;
+				entry_free(cleanentry);
+				cleanentry = 0;
+				long_array_invert(offsets, n);
 			}
-			entry_free(cleanentry);
-			cleanentry = 0;
-			long_array_invert(offsets, n);
 		}
-	rc = 0;
+	} while (ignore_nonleaf && n_nonleaf > 0 && n_leaf > 0);
+	rc = (n_nonleaf ? -2 : 0);
 
 cleanup:
 	if (entry) {

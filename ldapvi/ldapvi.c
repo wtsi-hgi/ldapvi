@@ -139,7 +139,12 @@ ldapmodify_handler(tentry *clean, tentry *modified, LDAPMod **mods,
 		}
 	} else if (clean) {
 		if (verbose) printf("(delete) %s\n", entry_dn(clean));
-		if (ldap_delete_ext_s(ld, entry_dn(clean), ctrls, 0)) {
+		switch (ldap_delete_ext_s(ld, entry_dn(clean), ctrls, 0)) {
+		case 0:
+			break;
+		case LDAP_NOT_ALLOWED_ON_NONLEAF:
+			return -2;
+		default:
 			ldap_perror(ld, "ldap_delete");
 			return -1;
 		}
