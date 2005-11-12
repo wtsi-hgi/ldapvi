@@ -1,6 +1,6 @@
 ldapvi
 --------
-http://www.lichteblau.com/src.html
+http://www.lichteblau.com/ldapvi.html
 David Lichteblau <david@lichteblau.com>
 
 
@@ -17,9 +17,3 @@ Prerequisites:
 
 Tested on:
   Linux, Solaris, FreeBSD, IRIX
-
-
-FIXME: With --enable-debug, quite some warnings about missing function
-prototypes are printed.  Most (but not all?) of them go away with
--D_BSD_SOURCE.  However, _BSD_SOURCE appear to be some kind of Linuxism,
-and I am not at all sure why we need it in this case.
