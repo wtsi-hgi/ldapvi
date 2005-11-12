@@ -1,0 +1,33 @@
+CC:=@CC@
+CFLAGS:=@CPPFLAGS@ @CFLAGS@
+LDFLAGS:=@LDFLAGS@ @LIBS@
+INSTALL:=@INSTALL@
+prefix:=@prefix@
+exec_prefix:=@exec_prefix@
+
+all: ldapvi
+
+dist: ldapvi ldapvi.1
+
+ldapvi: ldapvi.o data.o diff.o error.o misc.o parse.o port.o print.o search.o base64.o arguments.o
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+
+%.o: %.c
+	$(CC) -c $(CFLAGS) -o $@ $^
+
+.PHONY: clean
+clean:
+	rm -f ldapvi *.o gmon.out
+
+ldapvi.1: ldapvi ldapvi.1.in
+	help2man -n "LDAP client" -N ./ldapvi | cat - ldapvi.1.in >ldapvi.1.out
+	mv ldapvi.1.out ldapvi.1
+
+.PHONY: install
+install: ldapvi
+	mkdir -p @bindir@ @mandir@/man1/
+	@INSTALL_PROGRAM@ ldapvi @bindir@
+	@INSTALL_PROGRAM@ -m 644 ldapvi.1 @mandir@/man1/
+
+distclean:
+	rm -rf configure GNUmakefile config.h config.log autom4te.cache config.status

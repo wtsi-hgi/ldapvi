@@ -1,0 +1,14 @@
+1.2 patch-17
+  - fixed segfault: allow deletions to be skipped
+    (thanks to Gerfried Fuchs for the bug report)
+  - MD5 hashes are stored in crypt()-format, so prepend {CRYPT}, not {MD5}
+
+1.1 patch-8
+  - fixed compare() bugs involving fastcmp()
+    (thanks to Bernardo Innocenti for the bug report)
+  - fixed deleteoldrdn in LDIF output
+  - new option --diff
+  - tests, some comments
+
+1.0 base-0
+  initial release

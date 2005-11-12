@@ -1,0 +1,25 @@
+ldapvi
+--------
+http://www.lichteblau.com/src.html
+David Lichteblau <david@lichteblau.com>
+
+
+Installation:
+  $ ./configure && gmake
+  # gmake install
+
+Prerequisites:
+  - Recent OpenLDAP client library (2.1.25 is known to work)
+  - glib-2.0
+  - popt
+  - curses
+  - GNU make
+
+Tested on:
+  Linux, Solaris, FreeBSD, IRIX
+
+
+FIXME: With --enable-debug, quite some warnings about missing function
+prototypes are printed.  Most (but not all?) of them go away with
+-D_BSD_SOURCE.  However, _BSD_SOURCE appear to be some kind of Linuxism,
+and I am not at all sure why we need it in this case.

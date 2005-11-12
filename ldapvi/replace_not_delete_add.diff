@@ -1,0 +1,143 @@
+/* (c) 2004 David Lichteblau.  License: GNU GPL. */
+
+With this patch, ldapvi always replaces entire attributes instead of
+deleting and adding only those values which actually changed.  This
+patch was written on request of Manuel Flury.
+
+--- orig/common.h
++++ mod/common.h
+@@ -67,6 +67,7 @@
+ 
+ int named_array_ptr_cmp(const void *aa, const void *bb);
+ 
++LDAPMod *attribute2mods(tattribute *attribute);
+ LDAPMod **entry2mods(tentry *entry);
+ tattribute *entry_find_attribute(tentry *entry, char *ad, int createp);
+ void attribute_append_value(tattribute *attribute, char *data, int n);
+
+
+--- orig/data.c
++++ mod/data.c
+@@ -156,29 +156,34 @@
+ 	return bv;
+ }
+ 
++LDAPMod *
++attribute2mods(tattribute *attribute)
++{
++	GPtrArray *values = attribute_values(attribute);
++	LDAPMod *m = xalloc(sizeof(LDAPMod));
++	int j;
++
++	m->mod_op = LDAP_MOD_BVALUES;
++	m->mod_type = xdup(attribute_ad(attribute));
++	m->mod_bvalues = xalloc(
++		(1 + values->len) * sizeof(struct berval *));
++
++	for (j = 0; j < values->len; j++)
++		m->mod_bvalues[j]
++			= string2berval(g_ptr_array_index(values, j));
++	m->mod_bvalues[j] = 0;
++	return m;
++}
++
+ LDAPMod **
+ entry2mods(tentry *entry)
+ {
+ 	GPtrArray *attributes = entry_attributes(entry);
+ 	LDAPMod **result = xalloc((attributes->len + 1) * sizeof(LDAPMod *));
+-	int i, j;
+-
+-	for (i = 0; i < attributes->len; i++) {
+-		tattribute *attribute = g_ptr_array_index(attributes, i);
+-		GPtrArray *values = attribute_values(attribute);
+-		LDAPMod *m = xalloc(sizeof(LDAPMod));
+-
+-		m->mod_op = LDAP_MOD_BVALUES;
+-		m->mod_type = xdup(attribute_ad(attribute));
+-		m->mod_bvalues = xalloc(
+-			(1 + values->len) * sizeof(struct berval *));
++	int i;
+ 
+-		for (j = 0; j < values->len; j++)
+-			m->mod_bvalues[j]
+-				= string2berval(g_ptr_array_index(values, j));
+-		m->mod_bvalues[j] = 0;
+-		result[i] = m;
+-	}
++	for (i = 0; i < attributes->len; i++)
++		result[i] = attribute2mods(g_ptr_array_index(attributes, i));
+ 	result[i] = 0;
+ 	return result;
+ }
+
+
+--- orig/diff.c
++++ mod/diff.c
+@@ -30,42 +30,24 @@
+ }
+ 
+ static void
+-note_values(GArray *a, GArray *b, GPtrArray *mods)
++note_values(GArray *a, GArray *b, int *changed)
+ {
+-	GArray *v;
+-	LDAPMod *m;
+-
+-	if (a && b) return;
+-
+-	m = xalloc(sizeof(LDAPMod));
+-	if (a) {
+-		v = a;
+-		m->mod_op = LDAP_MOD_DELETE;
+-	} else {
+-		v = b;
+-		m->mod_op = LDAP_MOD_ADD;
+-	}
+-	m->mod_op |= LDAP_MOD_BVALUES;
+-	m->mod_type = 0;
+-	m->mod_bvalues = xalloc(2 * sizeof(struct berval *));
+-	m->mod_bvalues[0] = string2berval(v);
+-	m->mod_bvalues[1] = 0;
+-	g_ptr_array_add(mods, m);
++	if (!(a && b)) *changed = 1;
+ }
+ 
+ static void
+ compare_attributes(tattribute *clean, tattribute *new, GPtrArray *mods)
+ {
+-	int i;
++	int changed = 0;
+ 	compare_ptr_arrays(attribute_values(clean),
+ 			   attribute_values(new),
+ 			   carray_ptr_cmp,
+ 			   (note_function) note_values,
+-			   mods);
+-	for (i = mods->len - 1; i >= 0; i--) {
+-		LDAPMod *m = g_ptr_array_index(mods, i);
+-		if (m->mod_type) break;
+-		m->mod_type = xdup(attribute_ad(clean));
++			   &changed);
++	if (changed) {
++		LDAPMod *m = attribute2mods(new);
++		m->mod_op |= LDAP_MOD_REPLACE;
++		g_ptr_array_add(mods, m);
+ 	}
+ }
+ 
+
+
+--- orig/test/try
++++ mod/test/try
+@@ -3,7 +3,7 @@
+ 	echo "* $1"
+ 	../ldapvi --diff $1.a $1.b >$1.out || echo FAILED
+ 	if test -f $1.wanted; then
+-		diff $1.wanted $1.out || echo FAILED
++		diff -u $1.wanted $1.out || echo FAILED
+ 	else
+ 		echo creating $1.wanted
+ 		mv $1.out $1.wanted
+
+
+

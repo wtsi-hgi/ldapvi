@@ -1,0 +1,2 @@
+#undef HAVE_MKDTEMP
+#undef HAVE_ON_EXIT
