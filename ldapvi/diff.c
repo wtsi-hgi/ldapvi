@@ -340,7 +340,9 @@ more_deletions:
  * the modified copy.
  *
  * For each change, call handler with arguments described below.
- * Handlers must return 0 on success, or -1 on failure.
+ * Handlers must return 0 on success, or -1 on failure.  (As a special
+ * case, return value -2 on a deletion indicates an attempt to delete a
+ * non-leaf entry, which is non-fatal.)
  *
  * For each new entry (labeled with "add"), call
  *   handler(NULL, new_entry, mods, USERDATA)
@@ -348,6 +350,7 @@ more_deletions:
  *
  * For each entry present in CLEAN but not DATA, call
  *   handler(removed_entry, 0, 0, USERDATA)
+ * (This step can be repeated in the case of non-leaf entries.)
  *
  * For each entry present in both files, handler can be called two times.
  * If the distinguished names of the old and new entry disagree, call

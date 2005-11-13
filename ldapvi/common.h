@@ -28,13 +28,27 @@ void ldaperr(LDAP *ld, char *str);
 /*
  * arguments.c
  */
+typedef struct cmdline {
+	char *server;
+	char *base;
+	int scope;
+	char *filter;
+	char **attrs;
+	char *user;
+	char *password;
+	int progress;
+	int referrals;
+	int add;
+	int managedsait;
+	char *sortkeys;
+	int starttls;
+	int deref;
+	int verbose;
+	int noquestions;
+} cmdline;
+
 void parse_arguments(
-	int argc, const char **argv,
-	char **server, char **base, int *scope, char **filter,
-	char ***attrs, char **user, char **password, int *progress,
-	int *referrals, int *add, GPtrArray *ctrls, int *managedsait,
-	char **sortkeys, int *starttls, int *deref, int *verbose,
-	int *noquestions);
+	int argc, const char **argv, cmdline *result, GPtrArray *ctrls);
 void usage(int fd, int rc);
 
 /*

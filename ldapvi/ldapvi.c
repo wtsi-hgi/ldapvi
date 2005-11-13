@@ -659,30 +659,32 @@ int
 main(int argc, const char **argv)
 {
 	LDAP *ld;
-	char *server = 0;
-	char *user = 0;
-	char *password = 0;
-	char *base = 0;
-	int scope = LDAP_SCOPE_SUBTREE;
-	char *filter = "(objectclass=*)";
-	char **attrs = 0;
+	cmdline cmdline;
+	GPtrArray *ctrls = g_ptr_array_new();
 	static char dir[] = "/tmp/ldapvi-XXXXXX";
 	char *clean;
 	char *data;
 	GArray *offsets;
 	int changed;
-	int progress = 1;
-	int referrals = 1;
-	int add = 0;
 	FILE *s;
-	int managedsait = 0;
-	char *sortkeys = 0;
-	GPtrArray *ctrls = g_ptr_array_new();
 	FILE *target_stream;
-	int deref = LDAP_DEREF_NEVER;
-	int starttls = 0;
-	int verbose = 0;
-	int noquestions = 0;
+
+	cmdline.server = 0;
+	cmdline.base = 0;
+	cmdline.scope = LDAP_SCOPE_SUBTREE;
+	cmdline.filter = "(objectclass=*)";
+	cmdline.attrs = 0;
+	cmdline.user = 0;
+	cmdline.password = 0;
+	cmdline.progress = 1;
+	cmdline.referrals = 1;
+	cmdline.add = 0;
+	cmdline.managedsait = 0;
+	cmdline.sortkeys = 0;
+	cmdline.starttls = 0;
+	cmdline.deref = LDAP_DEREF_NEVER;
+	cmdline.verbose = 0;
+	cmdline.noquestions = 0;
 
 	if (argc >= 2 && !strcmp(argv[1], "--diff")) {
 		if (argc != 4) {
@@ -693,23 +695,33 @@ main(int argc, const char **argv)
 		exit(0);
 	}
 
-	parse_arguments(argc, argv, &server, &base, &scope, &filter, &attrs,
-			&user, &password, &progress, &referrals, &add,
-			ctrls, &managedsait, &sortkeys, &starttls, &deref,
-			&verbose, &noquestions);
+	parse_arguments(argc, argv, &cmdline, ctrls);
 	target_stream = fixup_streams();
 
-	ld = do_connect(server, user, password, referrals, starttls, deref);
+	ld = do_connect(cmdline.server,
+			cmdline.user,
+			cmdline.password,
+			cmdline.referrals,
+			cmdline.starttls,
+			cmdline.deref);
 	if (!ld) exit(1);
 	setupterm(0, 1, 0);
 
-	if (sortkeys)
-		append_sort_control(ld, ctrls, sortkeys);
+	if (cmdline.sortkeys)
+		append_sort_control(ld, ctrls, cmdline.sortkeys);
 	g_ptr_array_add(ctrls, 0);
 	if (target_stream) {
-		if (add) yourfault("Cannot --add entries noninteractively.");
-		search(target_stream, ld, base, scope, filter, attrs,
-		       (void *) ctrls->pdata, progress, 1);
+		if (cmdline.add)
+			yourfault("Cannot --add entries noninteractively.");
+		search(target_stream,
+		       ld,
+		       cmdline.base,
+		       cmdline.scope,
+		       cmdline.filter,
+		       cmdline.attrs,
+		       (void *) ctrls->pdata,
+		       cmdline.progress,
+		       1);
 		exit(0);
 	}
 
@@ -723,19 +735,26 @@ main(int argc, const char **argv)
 	
 	if ( !(s = fopen(clean, "w"))) syserr();
 	fputs("# ldapvi(1)\n", s);
-	if (add)
+	if (cmdline.add)
 		offsets = g_array_new(0, 0, sizeof(long));
 	else
-		offsets = search(s, ld, base, scope, filter, attrs,
-				 (void *) ctrls->pdata, progress, noquestions);
+		offsets = search(s,
+				 ld,
+				 cmdline.base,
+				 cmdline.scope,
+				 cmdline.filter,
+				 cmdline.attrs,
+				 (void *) ctrls->pdata,
+				 cmdline.progress,
+				 cmdline.noquestions);
 	if (fclose(s) == EOF) syserr();
 	cp(clean, data, 0, 0);
 	edit(data);
 
-	if (noquestions) {
+	if (cmdline.noquestions) {
 		if (!analyze_changes(offsets, clean, data)) return 0;
 		commit(ld, offsets, clean, data, (void *) ctrls->pdata,
-		       verbose);
+		       cmdline.verbose);
 		return 1;
 	}
 
@@ -747,12 +766,14 @@ main(int argc, const char **argv)
 		switch (choose("Action?", "yqQvebrs?", "(Type '?' for help.)")) {
 		case 'y':
 			commit(ld, offsets, clean, data, (void *) ctrls->pdata,
-			       verbose);
+			       cmdline.verbose);
 			changed = 1;
 			break; /* reached only on user error */
 		case 'q':
 			if (save_ldif(offsets, clean, data,
-				      server, user, managedsait))
+				      cmdline.server,
+				      cmdline.user,
+				      cmdline.managedsait))
 				break;
 			return 0;
 		case 'Q':
@@ -765,15 +786,19 @@ main(int argc, const char **argv)
 			changed = 1;
 			break;
 		case 'b':
-			user = login(ld, 0, 0, 1);
+			cmdline.user = login(ld, 0, 0, 1);
 			changed = 1; /* print stats again */
 			break;
 		case 'r':
 			ldap_unbind_s(ld);
 			ld = do_connect(
-				server, user, password, referrals,
-				starttls, deref);
-			printf("Connected to %s.\n", server);
+				cmdline.server,
+				cmdline.user,
+				cmdline.password,
+				cmdline.referrals,
+				cmdline.starttls,
+				cmdline.deref);
+			printf("Connected to %s.\n", cmdline.server);
 			changed = 1; /* print stats again */
 			break;
 		case 's':
