@@ -121,6 +121,7 @@ struct ldapmodify_context {
 	LDAP *ld;
 	LDAPControl **controls;
 	int verbose;
+	int noquestions;
 };
 
 static int
@@ -162,7 +163,9 @@ ldapmodify_handler(tentry *clean, tentry *modified, LDAPMod **mods,
 		case 0:
 			break;
 		case LDAP_NOT_ALLOWED_ON_NONLEAF:
-			return -2;
+			if (!ctx->noquestions)
+				return -2;
+			/* else fall through */
 		default:
 			ldap_perror(ld, "ldap_delete");
 			return -1;
@@ -533,12 +536,13 @@ retry:
 
 static void
 commit(LDAP *ld, GArray *offsets, char *clean, char *data, LDAPControl **ctrls,
-       int verbose)
+       int verbose, int noquestions)
 {
 	struct ldapmodify_context ctx;
 	ctx.ld = ld;
 	ctx.controls = ctrls;
 	ctx.verbose = verbose;
+	ctx.noquestions = noquestions;
 	
 	switch (compare(ldapmodify_handler, &ctx, offsets, clean, data, 0)) {
 	case 0:
@@ -774,7 +778,7 @@ main(int argc, const char **argv)
 	if (cmdline.noquestions) {
 		if (!analyze_changes(offsets, clean, data)) return 0;
 		commit(ld, offsets, clean, data, (void *) ctrls->pdata,
-		       cmdline.verbose);
+		       cmdline.verbose, 1);
 		return 1;
 	}
 
@@ -786,7 +790,7 @@ main(int argc, const char **argv)
 		switch (choose("Action?", "yqQvebrs?", "(Type '?' for help.)")) {
 		case 'y':
 			commit(ld, offsets, clean, data, (void *) ctrls->pdata,
-			       cmdline.verbose);
+			       cmdline.verbose, 0);
 			changed = 1;
 			break; /* reached only on user error */
 		case 'q':
