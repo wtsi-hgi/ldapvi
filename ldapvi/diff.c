@@ -234,6 +234,7 @@ cleanup:
 
 /*
  * Check whether all of the following conditions are true and return a boolean.
+ *   - none of the DNs is empty, so RDN-frobbing code can rely on senseful DNs
  *   - the attribute values in clean's RDN are contained in clean.
  *   - the attribute values in data's RDN are contained in data.
  *   - the attribute values in clean's RDN are either all contained in data
@@ -242,6 +243,14 @@ cleanup:
 int
 validate_rename(tentry *clean, tentry *data, int *deleteoldrdn)
 {
+	if (!*entry_dn(clean)) {
+		puts("Error: Cannot rename ROOT_DSE.");
+		return -1;
+	}
+	if (!*entry_dn(data)) {
+		puts("Error: Cannot replace ROOT_DSE.");
+		return -1;
+	}
 	if (frob_rdn(clean, entry_dn(clean), FROB_RDN_CHECK) == -1) {
 		puts("Error: Old RDN not found in entry.");
 		return -1;
@@ -514,7 +523,8 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 
 cleanup:
 	if (entry) {
-		fprintf(stderr, "Error at: %s\n", entry_dn(entry));
+		if (*entry_dn(entry))
+			fprintf(stderr, "Error at: %s\n", entry_dn(entry));
 		entry_free(entry);
 	}
 	if (cleanentry) entry_free(cleanentry);

@@ -85,7 +85,7 @@ moddn(LDAP *ld, char *old, char *new, int dor, LDAPControl **ctrls)
 	int rc;
 	char **newrdns = ldap_explode_dn(new, 0);
 	char **ptr = newrdns;
-	char *newrdn = *ptr++;
+	char *newrdn = *ptr++; /* non-null (checked in validate_rename) */
 	GString *newsup = g_string_sized_new(strlen(new));
 	if (*ptr) g_string_append(newsup, *ptr++);
 	for (; *ptr; ptr++) {

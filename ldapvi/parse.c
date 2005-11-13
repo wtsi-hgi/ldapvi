@@ -270,7 +270,7 @@ read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
 	} while (!name->len);
 
 	rdns = ldap_explode_dn(value->str, 0);
-	if (!rdns || !*rdns) {
+	if (!rdns) {
 		fputs("Error: Invalid distinguished name string.\n", stderr);
 		return -1;
 	}

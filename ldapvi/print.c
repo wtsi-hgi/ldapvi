@@ -157,13 +157,13 @@ print_ldif_add(FILE *s, char *dn, LDAPMod **mods)
 void
 print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
 {
-	char **newrdns = ldap_explode_dn(newdn, 0);
+	char **newrdns = ldap_explode_dn(newdn, 0); 
 	char **ptr = newrdns;
 	
 	fputs("\ndn: ", s);
 	fputs(olddn, s);
 	fputs("\nchangetype: modrdn\nnewrdn: ", s);
-	fputs(*ptr, s);
+	fputs(*ptr, s);  /* non-null (checked in validate_rename) */
 	fprintf(s, "\ndeleteoldrdn: %d\nnewsuperior: ", !!deleteoldrdn);
 	ptr++;
 	if (*ptr)
