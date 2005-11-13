@@ -9,7 +9,9 @@
     to standard output for easy .ldaprc setup
   - new command line argument --discover: as an alternative to --base,
     query the ROOT DSE for all namingContexts and repeat searching in
-    all contexts automatically.
+    all contexts automatically
+  - new command line argument --class: specify objectclasses at the
+    command line that are looked up and inserted as a template
 
 1.2 2004-07-07 r18 (patch-17)
   - fixed segfault: allow deletions to be skipped

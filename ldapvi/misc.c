@@ -245,3 +245,13 @@ xdup(char *str)
 	}
 	return result;
 }
+
+void
+adjoin_str(GPtrArray *strs, char *str)
+{
+	int i;
+	for (i = 0; i < strs->len; i++)
+		if (!strcmp(str, g_ptr_array_index(strs, i)))
+			return;
+	g_ptr_array_add(strs, str);
+}

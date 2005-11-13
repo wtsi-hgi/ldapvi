@@ -21,6 +21,8 @@
 #define USAGE								   \
 "Usage: ldapvi [OPTION]... [FILTER] [AD]...\n"				   \
 "       ldapvi --diff FILE1 FILE2\n"					   \
+"Quickstart:\n"                                                            \
+"       ldapvi --discover --host HOSTNAME\n"                               \
 "Perform an LDAP search and update results using a text editor.\n"	   \
 "\n"									   \
 "Connection options:\n"							   \
@@ -34,7 +36,8 @@
 "  -S, --sort KEYS        Sort control (critical).\n"			   \
 "\n"									   \
 "Miscellaneous options:\n"						   \
-"  -A, --add              Don't search, start with empty file.\n"	   \
+"  -A, --add              Don't search, start with empty file.  See -o.\n" \
+"  -o, --class OBJCLASS   Class to add.  Can be repeated.  Implies -A.\n"  \
 "  -a, --deref            never|searching|finding|always\n"		   \
 "  -d, --discover         Auto-detect naming contexts.              [2]\n" \
 "  -c, --config           Print parameters in ldap.conf syntax.\n"         \
@@ -74,11 +77,12 @@ static struct poptOption options[] = {
 	{"chase",	'C', POPT_ARG_STRING, 0, 'C', 0, 0},
 	{"deref",	'a', POPT_ARG_STRING, 0, 'a', 0, 0},
 	{"sort",	'S', POPT_ARG_STRING, 0, 'S', 0, 0},
+	{"class",	'o', POPT_ARG_STRING, 0, 'o', 0, 0},
+	{"add",		'A', 0, 0, 'A', 0, 0},
 	{"config",	'c', 0, 0, 'c', 0, 0},
 	{"discover",	'd', 0, 0, 'd', 0, 0},
 	{"quiet",	'q', 0, 0, 'q', 0, 0},
 	{"verbose",	'v', 0, 0, 'v', 0, 0},
-	{"add",		'A', 0, 0, 'A', 0, 0},
 	{"managedsait",	'M', 0, 0, 'M', 0, 0},
 	{"starttls",	'Z', 0, 0, 'Z', 0, 0},
 	{"help",	'H', 0, 0, 'H', 0, 0},
@@ -144,7 +148,13 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 			result->progress = 0;
 			break;
 		case 'A':
-			result->add = 1;
+			if (!result->add)
+				result->add = g_ptr_array_new();
+			break;
+		case 'o':
+			if (!result->add)
+				result->add = g_ptr_array_new();
+			adjoin_str(result->add, arg);
 			break;
 		case 'C':
 			if (!strcasecmp(arg, "yes"))

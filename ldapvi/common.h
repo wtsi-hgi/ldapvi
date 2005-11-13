@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <glib.h>
 #include <ldap.h>
+#include <ldap_schema.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,7 +55,7 @@ typedef struct cmdline {
 	char *password;
 	int progress;
 	int referrals;
-	int add;
+	GPtrArray *add;
 	int managedsait;
 	char *sortkeys;
 	int starttls;
@@ -144,6 +145,7 @@ char *get_password();
 char *append(char *a, char *b);
 void *xalloc(size_t size);
 char *xdup(char *str);
+void adjoin_str(GPtrArray *strs, char *str);
 
 /*
  * print.c
@@ -161,6 +163,8 @@ void print_ldif_delete(FILE *s, char *dn);
 /*
  * search.c
  */
+void discover_naming_contexts(LDAP *ld, GPtrArray *basedns);
+void get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributes);
 GArray *search(
 	FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty);
 

@@ -761,6 +761,136 @@ write_config(LDAP *ld, FILE *f, cmdline *cmdline)
 	fprintf(f, "#TIMELIMIT %d\n", limit);
 }
 
+static struct ldap_objectclass *
+get_objectclass(GPtrArray *classes, char *name)
+{
+	int i;
+	char **ptr;
+	for (i = 0; i < classes->len; i++) {
+		struct ldap_objectclass *cls = g_ptr_array_index(classes, i);
+		if (!strcmp(cls->oc_oid, name))
+			return cls;
+		for (ptr = cls->oc_names; ptr && *ptr; ptr++)
+			if (!strcasecmp(*ptr, name))
+				return cls;
+	}
+	fprintf(stderr, "Error: Object class not found: %s\n", name);
+	exit(1);
+}
+
+static struct ldap_attributetype *
+get_attributetype(GPtrArray *types, char *name)
+{
+	int i;
+	char **ptr;
+	for (i = 0; i < types->len; i++) {
+		struct ldap_attributetype *cls = g_ptr_array_index(types, i);
+		if (!strcmp(cls->at_oid, name))
+			return cls;
+		for (ptr = cls->at_names; ptr && *ptr; ptr++)
+			if (!strcasecmp(*ptr, name))
+				return cls;
+	}
+	fprintf(stderr, "Error: Attribute type not found: %s\n", name);
+	exit(1);
+}
+
+static char *
+class_name(struct ldap_objectclass *cls)
+{
+	char **names = cls->oc_names;
+	if (names && *names)
+		return *names;
+	return cls->oc_oid;
+}
+
+static char *
+type_name(struct ldap_attributetype *at)
+{
+	char **names = at->at_names;
+	if (names && *names)
+		return *names;
+	return at->at_oid;
+}
+
+static void
+add_template(LDAP *ld,  FILE *s, GPtrArray *wanted, char *base)
+{
+	int i, j;
+	GPtrArray *classes = g_ptr_array_new();
+	GPtrArray *types = g_ptr_array_new();
+	GPtrArray *must = g_ptr_array_new();
+	GPtrArray *may = g_ptr_array_new();
+	char **ptr;
+	struct ldap_objectclass *cls;
+	struct ldap_attributetype *at;
+	struct ldap_objectclass *structural = 0;
+	
+	get_schema(ld, classes, types);
+	fputc('\n', s);
+
+	/* normalize "wanted" to oids */
+	for (i = 0; i < wanted->len; i++) {
+		char *name = g_ptr_array_index(wanted, i);
+		cls = get_objectclass(classes, name);
+		g_ptr_array_index(wanted, i) = cls->oc_oid;
+		if (cls->oc_kind == LDAP_SCHEMA_ABSTRACT)
+			fprintf(s, "### NOTE: objectclass is abstract: %s\n",
+				name);
+	}
+	/* add all superclasses */
+	for (i = 0; i < wanted->len; i++) {
+		cls = get_objectclass(classes, g_ptr_array_index(wanted, i));
+		for (ptr = cls->oc_sup_oids; ptr && *ptr; ptr++)
+			adjoin_str(wanted, *ptr);
+		if (cls->oc_kind == LDAP_SCHEMA_STRUCTURAL)
+			if (structural)
+				fprintf(s,
+					"### WARNING: extra structural object class: %s\n",
+					class_name(cls));
+			else {
+				fprintf(s,
+					"# structural object class: %s\n",
+					class_name(cls));
+				structural = cls;
+			}
+		for (ptr = cls->oc_at_oids_must; ptr && *ptr; ptr++) {
+			at = get_attributetype(types, *ptr);
+			g_ptr_array_remove(may, at);
+			for (j = 0; j < must->len; j++)
+				if (at == g_ptr_array_index(must, j))
+					break;
+			if (j >= must->len) g_ptr_array_add(must, at);
+		}
+		for (ptr = cls->oc_at_oids_may; ptr && *ptr; ptr++) {
+			at = get_attributetype(types, *ptr);
+			for (j = 0; j < must->len; j++)
+				if (at == g_ptr_array_index(must, j))
+					break;
+			if (j >= must->len) g_ptr_array_add(may, at);
+		}
+	}
+	if (!structural)
+		fputs("### WARNING: no structural object class specified!\n",
+		      s);
+
+	fprintf(s, "add %s\n", base ? base : "<DN>");
+	for (i = 0; i < wanted->len; i++) {
+		cls = get_objectclass(classes, g_ptr_array_index(wanted, i));
+		fprintf(s, "objectClass: %s\n", class_name(cls));
+	}
+	for (i = 0; i < must->len; i++) {
+		at = g_ptr_array_index(must, i);
+		if (strcmp(at->at_oid, "2.5.4.0"))
+			fprintf(s, "%s: \n", type_name(at));
+	}
+	for (i = 0; i < may->len; i++) {
+		at = g_ptr_array_index(may, i);
+		if (strcmp(at->at_oid, "2.5.4.0"))
+			fprintf(s, "#%s: \n", type_name(at));
+	}
+}
+
 int
 main(int argc, const char **argv)
 {
@@ -846,14 +976,23 @@ main(int argc, const char **argv)
 	clean = append(dir, "/clean");
 	data = append(dir, "/data");
 	
-	if ( !(s = fopen(clean, "w"))) syserr();
+	if ( !(s = fopen(data, "w"))) syserr();
 	fputs("# ldapvi(1)\n", s);
-	if (cmdline.add)
+	if (cmdline.add) {
+		if (cmdline.add->len) {
+			char *base = 0;
+			if (cmdline.basedns->len > 0)
+				base = g_ptr_array_index(cmdline.basedns, 0);
+			add_template(ld, s, cmdline.add, base);
+		}
+		if (fclose(s) == EOF) syserr();
+		cp("/dev/null", clean, 0, 0);
 		offsets = g_array_new(0, 0, sizeof(long));
-	else
+	} else {
 		offsets = search(s, ld, &cmdline, (void *) ctrls->pdata, 0);
-	if (fclose(s) == EOF) syserr();
-	cp(clean, data, 0, 0);
+		if (fclose(s) == EOF) syserr();
+		cp(data, clean, 0, 0);
+	}
 	edit(data, 0);
 
 	if (cmdline.noquestions) {

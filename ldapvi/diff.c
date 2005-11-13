@@ -335,7 +335,7 @@ more_deletions:
 		     "  n -- abort deletions\n"
 		     "  Q -- discard changes and quit\n"
 		     "  ? -- this help");
-		break;
+		goto more_deletions;
 	}
 }
 

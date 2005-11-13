@@ -222,27 +222,80 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty)
 	return offsets;
 }
 
-static void
-add_namingcontexts(LDAP *ld, LDAPMessage *entry, GPtrArray *basedns)
+static LDAPMessage *
+get_entry(LDAP *ld, char *dn, LDAPMessage **result)
 {
-	char **values = ldap_get_values(ld, entry, "namingContexts");
-	char **ptr;
-	if (!values) return;
-	for (ptr = values; *ptr; ptr++)
-		g_ptr_array_add(basedns, xdup(*ptr));
-	ldap_value_free(values);
+	LDAPMessage *entry;
+	char *attrs[2] = {"+", 0};
+
+	if (ldap_search_s(ld, dn, LDAP_SCOPE_BASE, 0, attrs, 0, result))
+		ldaperr(ld, "ldap_search");
+	if ( !(entry = ldap_first_entry(ld, *result)))
+		ldaperr(ld, "read of root dse failed");
+	return entry;
 }
 
 void
 discover_naming_contexts(LDAP *ld, GPtrArray *basedns)
 {
 	LDAPMessage *result, *entry;
-	char *attrs[2] = {"+", 0};
+	char **values;
 
-	if (ldap_search_s(ld, "", LDAP_SCOPE_BASE, 0, attrs, 0, &result))
-		ldaperr(ld, "ldap_search");
-	if ( !(entry = ldap_first_entry(ld, result)))
-		ldaperr(ld, "read of root dse failed");
-	add_namingcontexts(ld, entry, basedns);
+	entry = get_entry(ld, "", &result);
+	values = ldap_get_values(ld, entry, "namingContexts");
+	if (values) {
+		char **ptr = values;
+		for (ptr = values; *ptr; ptr++)
+			g_ptr_array_add(basedns, xdup(*ptr));
+		ldap_value_free(values);
+	}
+	ldap_msgfree(result);
+}
+
+void
+get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributetypes)
+{
+	LDAPMessage *result, *entry;
+	char **values;
+	char *subschema_dn;
+	int code;
+	char *errp;
+
+	entry = get_entry(ld, "", &result);
+	values = ldap_get_values(ld, entry, "subschemaSubentry");
+	if (!values) {
+		ldap_msgfree(result);
+		return;
+	}
+	subschema_dn = xdup(*values);
+	ldap_value_free(values);
+	ldap_msgfree(result);
+
+	entry = get_entry(ld, subschema_dn, &result);
+	free(subschema_dn);
+	values = ldap_get_values(ld, entry, "objectClasses");
+	if (values) {
+		char **ptr = values;
+		for (ptr = values; *ptr; ptr++) {
+			struct ldap_objectclass *cls
+				= ldap_str2objectclass(
+					*ptr, &code, &errp, 0);
+			if (!cls) yourfault(ldap_scherr2str(code));
+			g_ptr_array_add(objectclasses, cls);
+		}
+		ldap_value_free(values);
+	}
+	values = ldap_get_values(ld, entry, "attributeTypes");
+	if (values) {
+		char **ptr = values;
+		for (ptr = values; *ptr; ptr++) {
+			struct ldap_attributetype *at
+				= ldap_str2attributetype(
+					*ptr, &code, &errp, 0);
+			if (!at) yourfault(ldap_scherr2str(code));
+			g_ptr_array_add(attributetypes, at);
+		}
+		ldap_value_free(values);
+	}
 	ldap_msgfree(result);
 }
