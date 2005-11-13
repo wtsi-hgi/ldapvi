@@ -3,6 +3,8 @@
     subtrees to be deleted in incorrect order
   - check for empty DNs later, so that search results including the
     ROOT_DSE do not lead to a parse error anymore
+  - for syntax errors, try to open the editor near the error position.
+    (This assumes support for the +N argument vi and emacs understand.)
 
 1.2 2004-07-07 r18 (patch-17)
   - fixed segfault: allow deletions to be skipped

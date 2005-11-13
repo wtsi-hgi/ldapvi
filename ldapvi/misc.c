@@ -90,13 +90,41 @@ choose(char *prompt, char *charbag, char *help)
 	return c;
 }
 
+static long
+line_number(char *pathname, long pos)
+{
+	FILE *f;
+	long line = 1;
+	int c;
+	
+	if ( !(f = fopen(pathname, "r+"))) syserr();
+	while (pos > 0) {
+		switch ( c = getc_unlocked(f)) {
+		case EOF:
+			goto done;
+		case '\n':
+			line++;
+			/* fall through */
+		default:
+			pos--;
+		}
+	}
+done:
+	if (fclose(f) == EOF) syserr();
+	return line;
+}
+
 void
-edit(char *pathname)
+edit(char *pathname, long pos)
 {
 	int childpid;
 	int status;
 	char *vi;
+	long line;
 
+	if (pos > 0)
+		line = line_number(pathname, pos);
+	
 	vi = getenv("VISUAL");
 	if (!vi) vi = getenv("EDITOR");
 	if (!vi) vi = "vi";
@@ -105,7 +133,12 @@ edit(char *pathname)
 	case -1:
 		syserr();
 	case 0:
-		execlp(vi, vi, pathname, 0);
+		if (pos > 0) {
+			char buf[20];
+			snprintf(buf, 20, "+%ld", line);
+			execlp(vi, vi, buf, pathname, 0);
+		} else
+			execlp(vi, vi, pathname, 0);
 		syserr();
 	}
 

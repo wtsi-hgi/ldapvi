@@ -386,7 +386,8 @@ int
 compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 		void *userdata,
 		GArray *offsets, FILE *clean, FILE *data,
-		long *error_position)
+		long *error_position,
+		long *syntax_error_position)
 {
 	tentry *entry = 0;
 	tentry *cleanentry = 0;
@@ -548,11 +549,8 @@ cleanup:
 	if (cleanentry) entry_free(cleanentry);
 	if (key) free(key);
 
-#if 0
-	if (rc == -1)
-		/* For syntax errors, report a character position */
-		fprintf(stderr, "File position: %ld.\n", ftell(data));
-#endif
+	if (syntax_error_position)
+		if ( (*syntax_error_position = ftell(data)) == -1) syserr();
 
 	/* on user error, return now and keep state for recovery */
 	if (rc == -2) return rc;

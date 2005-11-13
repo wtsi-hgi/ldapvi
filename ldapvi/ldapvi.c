@@ -22,7 +22,10 @@
 static int
 compare(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 	void *userdata,
-	GArray *offsets, char *cleanname, char *dataname)
+	GArray *offsets,
+	char *cleanname,
+	char *dataname,
+	long *error_position)
 {
 	FILE *clean, *data;
 	int rc;
@@ -30,7 +33,8 @@ compare(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 
 	if ( !(clean = fopen(cleanname, "r+"))) syserr();
 	if ( !(data = fopen(dataname, "r"))) syserr();
-	rc = compare_streams(handler, userdata, offsets, clean, data, &pos);
+	rc = compare_streams(handler, userdata, offsets, clean, data, &pos,
+			     error_position);
 	if (fclose(clean) == EOF) syserr();
 	if (fclose(data) == EOF) syserr();
 
@@ -439,7 +443,7 @@ save_ldif(GArray *offsets, char *clean, char *data,
 	fputs(name->str, s);
 	fputs("\n", s);
 
-	compare(ldif_handler, s, offsets, clean, data);
+	compare(ldif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 
 	printf("Your changes have been saved to %s.\n", name->str);
@@ -453,7 +457,7 @@ view_ldif(char *dir, GArray *offsets, char *clean, char *data)
 	char *name = append(dir, "/ldif");
 	if ( !(s = fopen(name, "w"))) syserr();
 	fputs("version: 1\n", s);
-	compare(ldif_handler, s, offsets, clean, data);
+	compare(ldif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 	view(name);
 	free(name);
@@ -486,10 +490,11 @@ analyze_changes(GArray *offsets, char *clean, char *data)
 {
 	struct statistics st;
 	int rc;
+	long pos;
 
 retry:
 	memset(&st, 0, sizeof(st));
-	rc = compare(statistics_handler, &st, offsets, clean, data);
+	rc = compare(statistics_handler, &st, offsets, clean, data, &pos);
 
 	/* Success? */
 	if (rc == 0) {
@@ -512,7 +517,7 @@ retry:
 	for (;;) {
 		switch (choose("What now?", "eQ?", "(Type '?' for help.)")) {
 		case 'e':
-			edit(data);
+			edit(data, pos);
 			goto retry;
 		case 'Q':
 			exit(0);
@@ -535,7 +540,7 @@ commit(LDAP *ld, GArray *offsets, char *clean, char *data, LDAPControl **ctrls,
 	ctx.controls = ctrls;
 	ctx.verbose = verbose;
 	
-	switch (compare(ldapmodify_handler, &ctx, offsets, clean, data)) {
+	switch (compare(ldapmodify_handler, &ctx, offsets, clean, data, 0)) {
 	case 0:
 		puts("Done.");
 		exit(0);
@@ -666,7 +671,7 @@ static void
 offline_diff(char *a, char *b)
 {
 	GArray *offsets = read_offsets(a);
-	compare(ldif_handler, stdout, offsets, a, b);
+	compare(ldif_handler, stdout, offsets, a, b, 0);
 	g_array_free(offsets, 1);
 }
 
@@ -764,7 +769,7 @@ main(int argc, const char **argv)
 				 cmdline.noquestions);
 	if (fclose(s) == EOF) syserr();
 	cp(clean, data, 0, 0);
-	edit(data);
+	edit(data, 0);
 
 	if (cmdline.noquestions) {
 		if (!analyze_changes(offsets, clean, data)) return 0;
@@ -797,7 +802,7 @@ main(int argc, const char **argv)
 			view_ldif(dir, offsets, clean, data);
 			break;
 		case 'e':
-			edit(data);
+			edit(data, 0);
 			changed = 1;
 			break;
 		case 'b':

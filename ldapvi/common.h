@@ -117,8 +117,11 @@ LDAPMod **compare_entries(tentry *eclean, tentry *enew);
 int compare_streams(
 	int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 	void *userdata,
-	GArray *offsets, FILE *clean, FILE *data,
-	long *error_position);
+	GArray *offsets,
+	FILE *clean,
+	FILE *data,
+	long *error_position,
+	long *syntax_error_position);
 
 enum frob_rdn_mode {
 	FROB_RDN_CHECK, FROB_RDN_REMOVE, FROB_RDN_ADD, FROB_RDN_CHECK_NONE
@@ -132,7 +135,7 @@ int carray_cmp(GArray *a, GArray *b);
 int carray_ptr_cmp(const void *aa, const void *bb);
 void cp(char *src, char *dst, off_t skip, int append);
 char choose(char *prompt, char *charbag, char *help);
-void edit(char *pathname);
+void edit(char *pathname, long pos);
 void view(char *pathname);
 GString *getline(char *prompt);
 char *get_password();
