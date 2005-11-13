@@ -238,9 +238,6 @@ discover_naming_contexts(LDAP *ld, GPtrArray *basedns)
 {
 	LDAPMessage *result, *entry;
 	char *attrs[2] = {"+", 0};
-        char *text;
-        int rc;
-        int err;
 
 	if (ldap_search_s(ld, "", LDAP_SCOPE_BASE, 0, attrs, 0, &result))
 		ldaperr(ld, "ldap_search");
