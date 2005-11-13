@@ -225,73 +225,27 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty)
 static void
 add_namingcontexts(LDAP *ld, LDAPMessage *entry, GPtrArray *basedns)
 {
-	char *ad;
-	BerElement *ber;
-
-	for (ad = ldap_first_attribute(ld, entry, &ber);
-	     ad;
-	     ad = ldap_next_attribute(ld, entry, ber))
-	{
-		struct berval **values;
-		struct berval **ptr;
-
-		if (!strcmp(ad, "namingContexts")) {
-			if ( !(values = ldap_get_values_len(ld, entry, ad)))
-				continue;
-			for (ptr = values; *ptr; ptr++) {
-				int len = (*ptr)->bv_len;
-				char *base = xalloc(len + 1);
-				memcpy(base, (*ptr)->bv_val, len);
-				base[len] = 0;
-				g_ptr_array_add(basedns, base);
-			}
-			ldap_value_free_len(values);
-		}
-		ldap_memfree(ad);
-	}
-	ber_free(ber, 0);
+	char **values = ldap_get_values(ld, entry, "namingContexts");
+	char **ptr;
+	if (!values) return;
+	for (ptr = values; *ptr; ptr++)
+		g_ptr_array_add(basedns, xdup(*ptr));
+	ldap_value_free(values);
 }
 
 void
 discover_naming_contexts(LDAP *ld, GPtrArray *basedns)
 {
-	int msgid;
 	LDAPMessage *result, *entry;
 	char *attrs[2] = {"+", 0};
         char *text;
         int rc;
         int err;
 
-	if (ldap_search_ext(
-		    ld, "", LDAP_SCOPE_BASE, "(objectclass=*)", attrs,
-		    0, 0, 0, 0, 0, &msgid))
+	if (ldap_search_s(ld, "", LDAP_SCOPE_BASE, 0, attrs, 0, &result))
 		ldaperr(ld, "ldap_search");
-
-	for (;;)
-		switch (ldap_result(ld, msgid, 0, 0, &result)) {
-		case -1:
-		case 0:
-			ldaperr(ld, "ldap_result");
-		case LDAP_RES_SEARCH_ENTRY:
-			entry = ldap_first_entry(ld, result);
-			add_namingcontexts(ld, entry, basedns);
-			ldap_msgfree(entry);
-			break;
-		case LDAP_RES_SEARCH_RESULT:
-			rc = ldap_parse_result(
-				ld, result, &err, 0, &text, 0, 0, 0);
-			if (rc)
-				ldaperr(ld, "ldap_parse_result");
-			if (err) {
-				fprintf(stderr, "Read failed: %s\n",
-					ldap_err2string(err));
-				if (text && *text)
-					fprintf(stderr, "\t%s\n", text);
-				exit(1);
-			}
-			ldap_msgfree(result);
-			return;
-		default:
-			abort();
-		}
+	if ( !(entry = ldap_first_entry(ld, result)))
+		ldaperr(ld, "read of root dse failed");
+	add_namingcontexts(ld, entry, basedns);
+	ldap_msgfree(result);
 }
