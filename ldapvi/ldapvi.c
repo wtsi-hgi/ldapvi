@@ -679,6 +679,77 @@ offline_diff(char *a, char *b)
 	g_array_free(offsets, 1);
 }
 
+void
+write_config(LDAP *ld, FILE *f, cmdline *cmdline)
+{
+	char *user = cmdline->user;
+	char *server = cmdline->server;
+	int limit;
+
+	if (!f) f = stdout;
+	fputs("# ldap.conf(5)\n", f);
+	fputs("# edit this as needed and paste into ~/.ldaprc\n", f);
+
+	/* URI/HOST */
+	fputc('\n', f);
+	fputs("# server name\n", f);
+	fputs("# (for parameterless operation, make sure to include at least this line)\n",
+	      f);
+	if (!server) 
+		ldap_get_option(ld, LDAP_OPT_URI, &server);
+	if (!server) 
+		ldap_get_option(ld, LDAP_OPT_HOST_NAME, &server);
+	if (server)
+		if (strstr(server, "://"))
+			fprintf(f, "URI %s\n", server);
+		else
+			fprintf(f, "HOST %s\n", server);
+
+	/* BASE */
+	fputc('\n', f);
+	fputs("# default search base\n", f);
+	if (cmdline->base)
+		fprintf(f, "BASE %s\n", cmdline->base);
+	else {
+		if (!cmdline->discover)
+			fputs("### cannot determine BASE DN, retry with --discover?\n",
+			      f);
+		fputs("#BASE <dn>\n", f);
+	}
+	
+	/* BINDDN */
+	fputc('\n', f);
+	fputs("# user to bind as\n", f);
+	if (user && user[0] == '(')
+		user = find_user(ld, user);
+	if (user)
+		fprintf(f, "BINDDN %s\n", user);
+	else
+		fputs("#BINDDN <dn>\n", f);
+	
+	/* search options */
+	fputc('\n', f);
+	fputs("# search parameters (uncomment as needed)\n", f);
+	switch (cmdline->deref) {
+	case LDAP_DEREF_NEVER:
+		fputs("#DEREF never\n", f);
+		break;
+	case LDAP_DEREF_SEARCHING:
+		fputs("#DEREF searcing\n", f);
+		break;
+	case LDAP_DEREF_FINDING:
+		fputs("#DEREF finding\n", f);
+		break;
+	case LDAP_DEREF_ALWAYS:
+		fputs("#DEREF always\n", f);
+		break;
+	}
+	ldap_get_option(ld, LDAP_OPT_SIZELIMIT, &limit);
+	fprintf(f, "#SIZELIMIT %d\n", limit);
+	ldap_get_option(ld, LDAP_OPT_TIMELIMIT, &limit);
+	fprintf(f, "#TIMELIMIT %d\n", limit);
+}
+
 int
 main(int argc, const char **argv)
 {
@@ -709,6 +780,8 @@ main(int argc, const char **argv)
 	cmdline.deref = LDAP_DEREF_NEVER;
 	cmdline.verbose = 0;
 	cmdline.noquestions = 0;
+	cmdline.discover = 0;
+	cmdline.config = 0;
 
 	if (argc >= 2 && !strcmp(argv[1], "--diff")) {
 		if (argc != 4) {
@@ -734,6 +807,12 @@ main(int argc, const char **argv)
 	if (cmdline.sortkeys)
 		append_sort_control(ld, ctrls, cmdline.sortkeys);
 	g_ptr_array_add(ctrls, 0);
+
+	if (cmdline.config) {
+		write_config(ld, target_stream, &cmdline);
+		exit(0);
+	}
+
 	if (target_stream) {
 		if (cmdline.add)
 			yourfault("Cannot --add entries noninteractively.");

@@ -61,6 +61,8 @@ typedef struct cmdline {
 	int deref;
 	int verbose;
 	int noquestions;
+	int discover;
+	int config;
 } cmdline;
 
 void parse_arguments(

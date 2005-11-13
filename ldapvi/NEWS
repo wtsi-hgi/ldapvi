@@ -5,6 +5,8 @@
     ROOT_DSE do not lead to a parse error anymore
   - for syntax errors, try to open the editor near the error position.
     (This assumes support for the +N argument vi and emacs understand.)
+  - new command line argument --config: print basic LDAP library parameters
+    to standard output for easy .ldaprc setup
 
 1.2 2004-07-07 r18 (patch-17)
   - fixed segfault: allow deletions to be skipped
