@@ -693,7 +693,8 @@ write_config(LDAP *ld, FILE *f, cmdline *cmdline)
 	/* URI/HOST */
 	fputc('\n', f);
 	fputs("# server name\n", f);
-	fputs("# (for parameterless operation, make sure to include at least this line)\n",
+	fputs("# (for parameterless operation, make sure to include at"
+	      " least this line)\n",
 	      f);
 	if (!server) 
 		ldap_get_option(ld, LDAP_OPT_URI, &server);
@@ -708,11 +709,21 @@ write_config(LDAP *ld, FILE *f, cmdline *cmdline)
 	/* BASE */
 	fputc('\n', f);
 	fputs("# default search base\n", f);
-	if (cmdline->base)
-		fprintf(f, "BASE %s\n", cmdline->base);
-	else {
+	if (cmdline->basedns->len) {
+		GPtrArray *basedns = cmdline->basedns;
+		int i;
+		if (basedns->len > 1)
+			fputs("### multiple namingcontexts found (uncomment"
+			      " one of these lines):\n",
+			      f);
+		for (i = 0; i < basedns->len; i++) {
+			if (basedns->len > 1) fputc('#', f);
+			fprintf(f, "BASE %s\n", g_ptr_array_index(basedns, i));
+		}
+	} else {
 		if (!cmdline->discover)
-			fputs("### cannot determine BASE DN, retry with --discover?\n",
+			fputs("### no search base specified, retry with"
+			      " --discover?\n",
 			      f);
 		fputs("#BASE <dn>\n", f);
 	}
@@ -765,7 +776,7 @@ main(int argc, const char **argv)
 	FILE *target_stream;
 
 	cmdline.server = 0;
-	cmdline.base = 0;
+	cmdline.basedns = g_ptr_array_new();
 	cmdline.scope = LDAP_SCOPE_SUBTREE;
 	cmdline.filter = "(objectclass=*)";
 	cmdline.attrs = 0;
@@ -808,6 +819,13 @@ main(int argc, const char **argv)
 		append_sort_control(ld, ctrls, cmdline.sortkeys);
 	g_ptr_array_add(ctrls, 0);
 
+	if (cmdline.discover) {
+		if (cmdline.basedns->len > 0)
+			yourfault("Conflicting options given:"
+				  " --base and --discover.");
+		discover_naming_contexts(ld, cmdline.basedns);
+	}
+
 	if (cmdline.config) {
 		write_config(ld, target_stream, &cmdline);
 		exit(0);
@@ -816,15 +834,7 @@ main(int argc, const char **argv)
 	if (target_stream) {
 		if (cmdline.add)
 			yourfault("Cannot --add entries noninteractively.");
-		search(target_stream,
-		       ld,
-		       cmdline.base,
-		       cmdline.scope,
-		       cmdline.filter,
-		       cmdline.attrs,
-		       (void *) ctrls->pdata,
-		       cmdline.progress,
-		       1);
+		search(target_stream, ld, &cmdline, (void *) ctrls->pdata, 1);
 		exit(0);
 	}
 
@@ -841,15 +851,7 @@ main(int argc, const char **argv)
 	if (cmdline.add)
 		offsets = g_array_new(0, 0, sizeof(long));
 	else
-		offsets = search(s,
-				 ld,
-				 cmdline.base,
-				 cmdline.scope,
-				 cmdline.filter,
-				 cmdline.attrs,
-				 (void *) ctrls->pdata,
-				 cmdline.progress,
-				 cmdline.noquestions);
+		offsets = search(s, ld, &cmdline, (void *) ctrls->pdata, 0);
 	if (fclose(s) == EOF) syserr();
 	cp(clean, data, 0, 0);
 	edit(data, 0);

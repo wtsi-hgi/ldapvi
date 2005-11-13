@@ -126,7 +126,7 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 			}
 			break;
 		case 'b':
-			result->base = arg;
+			g_ptr_array_add(result->basedns, arg);
 			break;
 		case 'D':
 			result->user = arg;

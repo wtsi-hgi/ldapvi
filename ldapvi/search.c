@@ -34,7 +34,7 @@ print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
 		struct berval **values = ldap_get_values_len(ld, entry, ad);
 		struct berval **ptr;
 
-		if (!values) continue; /* weird server */
+		if (!values) continue;
 		for (ptr = values; *ptr; ptr++) {
 			fputs(ad, s);
 			print_attrval(s, (*ptr)->bv_val, (*ptr)->bv_len);
@@ -89,7 +89,8 @@ update_progress(LDAP *ld, int n, LDAPMessage *entry)
 }
 
 void
-handle_result(LDAP *ld, LDAPMessage *result, int n, int noninteractive)
+handle_result(LDAP *ld, LDAPMessage *result, int start, int n,
+	      int progress, int noninteractive)
 {
         int rc;
         int err;
@@ -102,26 +103,26 @@ handle_result(LDAP *ld, LDAPMessage *result, int n, int noninteractive)
 	if (err) {
 		fprintf(stderr, "Search failed: %s\n", ldap_err2string(err));
 		if (text && *text) fprintf(stderr, "\t%s\n", text);
-		if ((err != LDAP_TIMELIMIT_EXCEEDED
+		if ((err != LDAP_NO_SUCH_OBJECT
+		     && err != LDAP_TIMELIMIT_EXCEEDED
 		     && err != LDAP_SIZELIMIT_EXCEEDED
 		     && err != LDAP_ADMINLIMIT_EXCEEDED)
-		    || n == 0
 		    || noninteractive)
 		{
 			exit(1);
 		}
-		if (choose("Continue anyway?", "yn", 0) != 'y')
+		if (n > start /* otherwise there is only point in continuing
+			       * if other searches find results, and we check
+			       * that later */
+		    && choose("Continue anyway?", "yn", 0) != 'y')
 			exit(0);
 	}
 
-	if (n == 0) {
-		fputs("No search results.", stderr);
-		if (!noninteractive)
-			fputs("  (Maybe use --add instead?)", stderr);
-		putc('\n', stderr);
+	if (n == start && progress) {
+		fputs("No search results", stderr);
 		if (matcheddn && *matcheddn)
-			fprintf(stderr, "(matched: %s)\n", matcheddn);
-		exit(0);
+			fprintf(stderr, " (matched: %s)", matcheddn);
+		fputs(".\n", stderr);
 	}
 
 	if (matcheddn) ldap_memfree(matcheddn);
@@ -142,18 +143,20 @@ log_reference(LDAP *ld, LDAPMessage *reference, FILE *s)
 	ldap_value_free(refs);
 }
 
-GArray *
-search(FILE *s, LDAP *ld, char *base, int scope, char *filter, char **attrs,
-       LDAPControl **ctrls, int progress, int noninteractive)
+static void
+search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
+	       cmdline *cmdline, LDAPControl **ctrls, int notty)
 {
 	int msgid;
 	LDAPMessage *result, *entry;
-	int n = 0;
-	GArray *offsets = g_array_new(0, 0, sizeof(long));
+	int start = offsets->len;
+	int n = start;
 	long offset;
 
-	if (ldap_search_ext(ld, base, scope, filter, attrs, 0,
-			    ctrls, 0, 0, 0, &msgid))
+	if (ldap_search_ext(
+		    ld, base,
+		    cmdline->scope, cmdline->filter, cmdline->attrs,
+		    0, ctrls, 0, 0, 0, &msgid))
 		ldaperr(ld, "ldap_search");
 
 	while (n >= 0)
@@ -164,11 +167,12 @@ search(FILE *s, LDAP *ld, char *base, int scope, char *filter, char **attrs,
 		case LDAP_RES_SEARCH_ENTRY:
 			entry = ldap_first_entry(ld, result);
 			offset = ftell(s);
-			if (offset == -1 && !noninteractive) syserr();
+			if (offset == -1 && !notty) syserr();
 			g_array_append_val(offsets, offset);
 			print_entry_message(s, ld, entry, n);
 			n++;
-			if (progress) update_progress(ld, n, entry);
+			if (cmdline->progress && !notty)
+				update_progress(ld, n, entry);
 			ldap_msgfree(entry);
 			break;
 		case LDAP_RES_SEARCH_REFERENCE:
@@ -176,15 +180,118 @@ search(FILE *s, LDAP *ld, char *base, int scope, char *filter, char **attrs,
 			ldap_msgfree(result);
 			break;
 		case LDAP_RES_SEARCH_RESULT:
-			update_progress(ld, n, 0);
-			putchar('\n');
-			handle_result(ld, result, n, noninteractive);
+			if (!notty) {
+				update_progress(ld, n, 0);
+				putchar('\n');
+			}
+			handle_result(ld, result, start, n, cmdline->progress,
+				      notty);
 			n = -1;
 			ldap_msgfree(result);
 			break;
 		default:
 			abort();
 		}
+}
+
+GArray *
+search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty)
+{
+	GArray *offsets = g_array_new(0, 0, sizeof(long));
+	GPtrArray *basedns = cmdline->basedns;
+	int i;
+
+	if (basedns->len == 0)
+		search_subtree(s, ld, offsets, 0, cmdline, ctrls, notty);
+	else
+		for (i = 0; i < basedns->len; i++) {
+			char *base = g_ptr_array_index(basedns, i);
+			if (cmdline->progress && (basedns->len > 1))
+				fprintf(stderr, "Searching in: %s\n", base);
+			search_subtree(
+				s, ld, offsets, base, cmdline, ctrls, notty);
+		}
+
+	if (!offsets->len) {
+		if (!cmdline->progress) /* if not printed already... */
+			fputs("No search results.  ", stderr);
+		fputs("(Maybe use --add instead?)\n", stderr);
+		exit(0);
+	}
 
 	return offsets;
+}
+
+static void
+add_namingcontexts(LDAP *ld, LDAPMessage *entry, GPtrArray *basedns)
+{
+	char *ad;
+	BerElement *ber;
+
+	for (ad = ldap_first_attribute(ld, entry, &ber);
+	     ad;
+	     ad = ldap_next_attribute(ld, entry, ber))
+	{
+		struct berval **values;
+		struct berval **ptr;
+
+		if (!strcmp(ad, "namingContexts")) {
+			if ( !(values = ldap_get_values_len(ld, entry, ad)))
+				continue;
+			for (ptr = values; *ptr; ptr++) {
+				int len = (*ptr)->bv_len;
+				char *base = xalloc(len + 1);
+				memcpy(base, (*ptr)->bv_val, len);
+				base[len] = 0;
+				g_ptr_array_add(basedns, base);
+			}
+			ldap_value_free_len(values);
+		}
+		ldap_memfree(ad);
+	}
+	ber_free(ber, 0);
+}
+
+void
+discover_naming_contexts(LDAP *ld, GPtrArray *basedns)
+{
+	int msgid;
+	LDAPMessage *result, *entry;
+	char *attrs[2] = {"+", 0};
+        char *text;
+        int rc;
+        int err;
+
+	if (ldap_search_ext(
+		    ld, "", LDAP_SCOPE_BASE, "(objectclass=*)", attrs,
+		    0, 0, 0, 0, 0, &msgid))
+		ldaperr(ld, "ldap_search");
+
+	for (;;)
+		switch (ldap_result(ld, msgid, 0, 0, &result)) {
+		case -1:
+		case 0:
+			ldaperr(ld, "ldap_result");
+		case LDAP_RES_SEARCH_ENTRY:
+			entry = ldap_first_entry(ld, result);
+			add_namingcontexts(ld, entry, basedns);
+			ldap_msgfree(entry);
+			break;
+		case LDAP_RES_SEARCH_RESULT:
+			rc = ldap_parse_result(
+				ld, result, &err, 0, &text, 0, 0, 0);
+			if (rc)
+				ldaperr(ld, "ldap_parse_result");
+			if (err) {
+				fprintf(stderr, "Read failed: %s\n",
+					ldap_err2string(err));
+				if (text && *text)
+					fprintf(stderr, "\t%s\n", text);
+				exit(1);
+			}
+			ldap_msgfree(result);
+			return;
+		default:
+			abort();
+		}
 }

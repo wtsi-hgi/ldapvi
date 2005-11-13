@@ -2,11 +2,14 @@
   - in ldap_delete, treat notAllowedOnNonLeaf as non-fatal, allowing
     subtrees to be deleted in incorrect order
   - check for empty DNs later, so that search results including the
-    ROOT_DSE do not lead to a parse error anymore
+    ROOT DSE do not lead to a parse error anymore
   - for syntax errors, try to open the editor near the error position.
     (This assumes support for the +N argument vi and emacs understand.)
   - new command line argument --config: print basic LDAP library parameters
     to standard output for easy .ldaprc setup
+  - new command line argument --discover: as an alternative to --base,
+    query the ROOT DSE for all namingContexts and repeat searching in
+    all contexts automatically.
 
 1.2 2004-07-07 r18 (patch-17)
   - fixed segfault: allow deletions to be skipped

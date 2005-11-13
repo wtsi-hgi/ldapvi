@@ -46,7 +46,7 @@ void ldaperr(LDAP *ld, char *str);
  */
 typedef struct cmdline {
 	char *server;
-	char *base;
+	GPtrArray *basedns;
 	int scope;
 	char *filter;
 	char **attrs;
@@ -162,8 +162,7 @@ void print_ldif_delete(FILE *s, char *dn);
  * search.c
  */
 GArray *search(
-	FILE *s, LDAP *ld, char *base, int scope, char *filter, char **attrs,
-	LDAPControl **controls, int progress, int noninteractive);
+	FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty);
 
 /*
  * port.c

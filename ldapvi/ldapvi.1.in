@@ -1,3 +1,14 @@
+.SH GETTING STARTED
+Assuming a suitably configured LDAP library, run ldapvi without arguments
+to see all entries available. 
+
+Otherwise, try `ldapvi -h HOSTNAME --discover' to query the ROOT DSE for
+available naming contexts.
+
+Once that works, run `ldapvi -h HOSTNAME --discover --config' to
+generate sample configuration that can be pasted into ~/.ldaprc or
+/etc/ldap/ldap.conf.
+
 .SH FILE FORMAT
 ldapvi uses an LDIF-like syntax, but not standard LDIF.  For a precise
 definition, see `ldapvi-file' below.  LDIF is defined in RFC 2849.
