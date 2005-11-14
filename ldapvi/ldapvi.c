@@ -359,7 +359,7 @@ cleanup:
 
 static LDAP *
 do_connect(char *server, char *user, char *password,
-	   int referrals, int starttls, int deref)
+	   int referrals, int starttls, int tls, int deref)
 {
 	LDAP *ld = 0;
 	int rc = 0;
@@ -371,6 +371,8 @@ do_connect(char *server, char *user, char *password,
 		strcpy(url + 7, server);
 		server = url;
 	}
+	if (ldap_set_option(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, (void *) &tls))
+		ldaperr(ld, "ldap_set_option(LDAP_OPT_X_TLS)");
 	if ( rc = ldap_initialize(&ld, server)) {
 		fprintf(stderr, "ldap_initialize: %s\n", ldap_err2string(rc));
 		exit(1);
@@ -918,6 +920,7 @@ main(int argc, const char **argv)
 	cmdline.managedsait = 0;
 	cmdline.sortkeys = 0;
 	cmdline.starttls = 0;
+	cmdline.tls = LDAP_OPT_X_TLS_TRY;
 	cmdline.deref = LDAP_DEREF_NEVER;
 	cmdline.verbose = 0;
 	cmdline.noquestions = 0;
@@ -941,6 +944,7 @@ main(int argc, const char **argv)
 			cmdline.password,
 			cmdline.referrals,
 			cmdline.starttls,
+			cmdline.tls,
 			cmdline.deref);
 	if (!ld) exit(1);
 	setupterm(0, 1, 0);
@@ -1041,6 +1045,7 @@ main(int argc, const char **argv)
 				cmdline.password,
 				cmdline.referrals,
 				cmdline.starttls,
+				cmdline.tls,
 				cmdline.deref);
 			printf("Connected to %s.\n", cmdline.server);
 			changed = 1; /* print stats again */

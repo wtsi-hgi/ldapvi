@@ -2,6 +2,7 @@
   - updated for libldap 2.2
   - cygwin works
   - fixed bogus modify operation when moving an entry without changing its rdn
+  - new command line option --tls
   - new command line option -R
   - workaround for Microsoft ROOT DSE oddity: need * instead of +
 

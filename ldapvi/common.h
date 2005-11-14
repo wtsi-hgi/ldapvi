@@ -59,6 +59,7 @@ typedef struct cmdline {
 	int managedsait;
 	char *sortkeys;
 	int starttls;
+	int tls;
 	int deref;
 	int verbose;
 	int noquestions;

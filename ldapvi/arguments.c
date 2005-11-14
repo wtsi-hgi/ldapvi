@@ -43,6 +43,7 @@
 "  -c, --config           Print parameters in ldap.conf syntax.\n"         \
 "  -M, --managedsait      manageDsaIT control (critical).\n"		   \
 "  -Z, --starttls         Require startTLS.\n"				   \
+"      --tls [never|allow|try|strict]  Level of TLS strictess.\n"          \
 "  -R, --read DN          Same as -b DN -s base '(objectclass=*)' + *\n"   \
 "  -q, --quiet            Disable progress output.\n"			   \
 "  -v, --verbose          Note every update.\n"				   \
@@ -69,6 +70,8 @@
 "\n"									   \
 "Report bugs to \"david@lichteblau.com\"."
 
+#define OPTION_TLS 1000
+
 static struct poptOption options[] = {
 	{"host",	'h', POPT_ARG_STRING, 0, 'h', 0, 0},
 	{"scope",	's', POPT_ARG_STRING, 0, 's', 0, 0},
@@ -80,6 +83,7 @@ static struct poptOption options[] = {
 	{"sort",	'S', POPT_ARG_STRING, 0, 'S', 0, 0},
 	{"class",	'o', POPT_ARG_STRING, 0, 'o', 0, 0},
 	{"root",	'R', POPT_ARG_STRING, 0, 'R', 0, 0},
+	{"tls",		  0, POPT_ARG_STRING, 0, OPTION_TLS, 0, 0},
 	{"add",		'A', 0, 0, 'A', 0, 0},
 	{"config",	'c', 0, 0, 'c', 0, 0},
 	{"discover",	'd', 0, 0, 'd', 0, 0},
@@ -185,6 +189,21 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 			break;
 		case 'Z':
 			result->starttls = 1;
+			break;
+		case OPTION_TLS:
+			if (!strcmp(arg, "never"))
+				result->tls = LDAP_OPT_X_TLS_NEVER;
+			else if (!strcmp(arg, "allow"))
+				result->tls = LDAP_OPT_X_TLS_ALLOW;
+			else if (!strcmp(arg, "try"))
+				result->tls = LDAP_OPT_X_TLS_TRY;
+			else if (!strcmp(arg, "strict"))
+				result->tls = LDAP_OPT_X_TLS_HARD;
+			else {
+				fprintf(stderr, "invalid tls level: %s\n",
+                                        arg);
+				usage(2, 1);
+			}
 			break;
 		case 'R':
 			g_ptr_array_add(result->basedns, arg);
