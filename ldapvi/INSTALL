@@ -16,4 +16,4 @@ Prerequisites:
   - GNU make
 
 Tested on:
-  Linux, Solaris, FreeBSD, IRIX
+  Linux, Solaris, FreeBSD, IRIX, Cygwin

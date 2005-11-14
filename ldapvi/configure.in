@@ -32,7 +32,8 @@ AC_CHECK_LIB([ldap],[main],:,AC_MSG_ERROR([libldap not found]))
 AC_CHECK_LIB([ldap],[ldap_initialize],,AC_MSG_ERROR([libldap present but obsolete]))
 
 # terminfo
-AC_CHECK_LIB([curses],[tigetstr],,AC_MSG_ERROR([libcurses not found]))
+AC_SEARCH_LIBS([tigetstr],[curses ncurses],,AC_MSG_ERROR([libcurses not found]))
+AC_CHECK_HEADER([curses.h],,AC_MSG_ERROR([curses.h not found]))
 
 # popt
 AC_CHECK_LIB([popt],[poptGetContext],,AC_MSG_ERROR([libpopt not found]))
