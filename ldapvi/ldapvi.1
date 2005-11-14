@@ -36,9 +36,9 @@ Sort control (critical).
 .SS "Miscellaneous options:"
 .TP
 \fB\-A\fR, \fB\-\-add\fR
-Don't search, start with empty file.  See \fB\-O\fR.
+Don't search, start with empty file.  See \fB\-o\fR.
 .TP
-\fB\-O\fR, \fB\-\-class\fR OBJCLASS
+\fB\-o\fR, \fB\-\-class\fR OBJCLASS
 Class to add.  Can be repeated.  Implies \fB\-A\fR.
 .TP
 \fB\-a\fR, \fB\-\-deref\fR
@@ -55,6 +55,9 @@ manageDsaIT control (critical).
 .TP
 \fB\-Z\fR, \fB\-\-starttls\fR
 Require startTLS.
+.TP
+\fB\-R\fR, \fB\-\-read\fR DN
+Same as \fB\-b\fR DN \fB\-s\fR base '(objectclass=*)' + *
 .TP
 \fB\-q\fR, \fB\-\-quiet\fR
 Disable progress output.

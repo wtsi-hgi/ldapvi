@@ -1,5 +1,6 @@
 1.4
   - cygwin works
+  - new command line option -R
 
 1.3 2005-11-13 r33
   - in ldap_delete, treat notAllowedOnNonLeaf as non-fatal, allowing
