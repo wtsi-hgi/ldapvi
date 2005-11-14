@@ -259,7 +259,7 @@ get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributetypes)
 	char **values;
 	char *subschema_dn;
 	int code;
-	char *errp;
+	const char *errp;
 
 	entry = get_entry(ld, "", &result);
 	values = ldap_get_values(ld, entry, "subschemaSubentry");
