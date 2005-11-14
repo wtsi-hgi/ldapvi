@@ -1,4 +1,4 @@
-1.4
+1.4 2005-11-15 r42
   - updated for libldap 2.2
   - cygwin works
   - fixed bogus modify operation when moving an entry without changing its rdn
