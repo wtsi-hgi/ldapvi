@@ -1,5 +1,6 @@
 1.4
   - cygwin works
+  - fixed bogus modify operation when moving an entry without changing its rdn
   - new command line option -R
   - workaround for Microsoft ROOT DSE oddity: need * instead of +
 

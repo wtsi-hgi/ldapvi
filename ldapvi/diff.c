@@ -184,7 +184,7 @@ cleanup:
  * (Return 0 if so, -1 if not.)
  *
  * With mode FROB_RDN_REMOVE, remove it
- * With mode FROB_RDN_ADD, add it.
+ * With mode FROB_RDN_ADD, add it (unless already present)
  * (Return 0.)
  */
 int
@@ -204,12 +204,15 @@ frob_ava(tentry *entry, int mode, char *ad, char *data, int n)
 		return -1;
 		break;
 	case FROB_RDN_REMOVE:
+                printf("FROB_RDN_REMOVE(%x, %s,%s)\n", entry, ad, data);
 		a = entry_find_attribute(entry, ad, 0);
 		attribute_remove_value(a, data, n);
 		break;
 	case FROB_RDN_ADD:
+                printf("FROB_RDN_ADD(%x, %s,%s)\n", entry, ad, data);
 		a = entry_find_attribute(entry, ad, 1);
-		attribute_append_value(a, data, n);
+                if (attribute_find_value(a, data, n) == -1)
+                        attribute_append_value(a, data, n);
 		break;
 	}
 	return 0;
