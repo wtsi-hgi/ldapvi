@@ -204,18 +204,30 @@ frob_ava(tentry *entry, int mode, char *ad, char *data, int n)
 		return -1;
 		break;
 	case FROB_RDN_REMOVE:
-                printf("FROB_RDN_REMOVE(%x, %s,%s)\n", entry, ad, data);
 		a = entry_find_attribute(entry, ad, 0);
 		attribute_remove_value(a, data, n);
 		break;
 	case FROB_RDN_ADD:
-                printf("FROB_RDN_ADD(%x, %s,%s)\n", entry, ad, data);
 		a = entry_find_attribute(entry, ad, 1);
                 if (attribute_find_value(a, data, n) == -1)
                         attribute_append_value(a, data, n);
 		break;
 	}
 	return 0;
+}
+
+/*
+ * the following is exactly equivalent to ldap_str2dn in libldap >= 2.2,
+ * but will fail linking on 2.1.  This way we avoid calling the old 2.1
+ * version of ldap_str2dn (leading to a segfault when accessing the result).
+ */
+void
+safe_str2dn(char *str, LDAPDN *out, int flags)
+{
+        struct berval bv;
+        bv.bv_val = str;
+        bv.bv_len = strlen(str);
+        ldap_bv2dn_x(&bv, out, flags);
 }
 
 /*
@@ -227,14 +239,14 @@ frob_ava(tentry *entry, int mode, char *ad, char *data, int n)
 int
 frob_rdn(tentry *entry, char *dn, int mode)
 {
-	LDAPDN *olddn;
+	LDAPDN olddn;
 	LDAPRDN rdn;
 	int i;
 	int rc = 0;
 
 	ldap_str2dn(dn, &olddn, LDAP_DN_FORMAT_LDAPV3);
 
-	rdn = (**olddn)[0];
+	rdn = olddn[0];
 	for (i = 0; rdn[i]; i++) {
 		LDAPAVA *ava = rdn[i];
 		char *ad = ava->la_attr.bv_val; /* XXX */

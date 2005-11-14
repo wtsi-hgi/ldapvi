@@ -1,4 +1,4 @@
-AC_INIT(FULL-PACKAGE-NAME, VERSION, BUG-REPORT-ADDRESS)
+AC_INIT(,, BUG-REPORT-ADDRESS)
 
 dnl FIXME: With --enable-debug, quite some warnings about missing
 dnl function prototypes are printed.  Most (but not all?) of them go
@@ -30,6 +30,7 @@ AC_CHECK_LIB([resolv],[main])
 AC_CHECK_LIB([lber],[main])
 AC_CHECK_LIB([ldap],[main],:,AC_MSG_ERROR([libldap not found]))
 AC_CHECK_LIB([ldap],[ldap_initialize],,AC_MSG_ERROR([libldap present but obsolete]))
+AC_CHECK_LIB([ldap],[ldap_bv2dn_x],,AC_MSG_ERROR([libldap 2.2 is required]))
 
 # terminfo
 AC_SEARCH_LIBS([tigetstr],[curses ncurses],,AC_MSG_ERROR([libcurses not found]))
