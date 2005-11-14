@@ -191,7 +191,7 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 			result->scope = LDAP_SCOPE_BASE;
 			result->filter = "(objectclass=*)";
 			{
-				static char *attrs[2] = {"+", "*", 0};
+				static char *attrs[3] = {"+", "*", 0};
 				result->attrs = attrs;
 			}
 			break;
