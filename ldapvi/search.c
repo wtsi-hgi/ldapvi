@@ -226,12 +226,12 @@ static LDAPMessage *
 get_entry(LDAP *ld, char *dn, LDAPMessage **result)
 {
 	LDAPMessage *entry;
-	char *attrs[2] = {"+", 0};
+	char *attrs[3] = {"+", "*", 0};
 
 	if (ldap_search_s(ld, dn, LDAP_SCOPE_BASE, 0, attrs, 0, result))
 		ldaperr(ld, "ldap_search");
 	if ( !(entry = ldap_first_entry(ld, *result)))
-		ldaperr(ld, "read of root dse failed");
+		ldaperr(ld, "ldap_first_entry");
 	return entry;
 }
 
