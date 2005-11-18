@@ -9,7 +9,7 @@ Installation:
   # gmake install
 
 Prerequisites:
-  - Recent OpenLDAP client library (2.1.25 is known to work)
+  - OpenLDAP client library >= version 2.2
   - glib-2.0
   - popt
   - curses
