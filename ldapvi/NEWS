@@ -1,3 +1,6 @@
+1.5 2005-12-11
+  - fixed argument parsing (thanks to Andrea Barisani for the report)
+
 1.4 2005-11-15 r43
   - updated for libldap 2.2
   - cygwin works

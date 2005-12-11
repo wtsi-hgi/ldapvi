@@ -910,7 +910,7 @@ main(int argc, const char **argv)
 	cmdline.server = 0;
 	cmdline.basedns = g_ptr_array_new();
 	cmdline.scope = LDAP_SCOPE_SUBTREE;
-	cmdline.filter = "(objectclass=*)";
+	cmdline.filter = 0;
 	cmdline.attrs = 0;
 	cmdline.user = 0;
 	cmdline.password = 0;
