@@ -221,7 +221,7 @@ frob_ava(tentry *entry, int mode, char *ad, char *data, int n)
  * but will fail linking on 2.1.  This way we avoid calling the old 2.1
  * version of ldap_str2dn (leading to a segfault when accessing the result).
  */
-void
+static void
 safe_str2dn(char *str, LDAPDN *out, int flags)
 {
         struct berval bv;
@@ -244,7 +244,7 @@ frob_rdn(tentry *entry, char *dn, int mode)
 	int i;
 	int rc = 0;
 
-	ldap_str2dn(dn, &olddn, LDAP_DN_FORMAT_LDAPV3);
+	safe_str2dn(dn, &olddn, LDAP_DN_FORMAT_LDAPV3);
 
 	rdn = olddn[0];
 	for (i = 0; rdn[i]; i++) {
