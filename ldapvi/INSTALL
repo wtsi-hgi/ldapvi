@@ -14,7 +14,7 @@ Prerequisites:
   - popt
   - curses
   - GNU make
-  - OpenSSL
+  - OpenSSL or GnuTLS (see ./configure --help)
 
 Tested on:
   Linux, Solaris, FreeBSD, IRIX, Cygwin

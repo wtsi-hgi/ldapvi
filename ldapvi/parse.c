@@ -16,8 +16,6 @@
  */
 #define _XOPEN_SOURCE
 #include <unistd.h>
-#include <openssl/sha.h>
-#include <openssl/md5.h>
 #include "common.h"
 
 #define fast_g_string_append_c(gstring, c)				\
@@ -183,58 +181,6 @@ cryptmd5(char *key)
 	return result;
 }
 
-static void
-g_string_append_sha(GString *string, char *key)
-{
-	unsigned char tmp[SHA_DIGEST_LENGTH];
-	SHA1((unsigned char *) key, strlen(key), tmp);
-	g_string_append_base64(string, tmp, sizeof(tmp));
-}
-
-static void
-g_string_append_ssha(GString *string, char *key)
-{
-	char rand[4];
-	unsigned char tmp[SHA_DIGEST_LENGTH + sizeof(rand)];
-	SHA_CTX SHA1context;
-
-	RAND_pseudo_bytes(rand, sizeof(rand));
-
-	SHA1_Init(&SHA1context);
-	SHA1_Update(&SHA1context, key, strlen(key));
-	SHA1_Update(&SHA1context, rand, sizeof(rand));
-	SHA1_Final(tmp, &SHA1context);
-
-	memcpy(tmp + SHA_DIGEST_LENGTH, rand, sizeof(rand));
-	g_string_append_base64(string, tmp, sizeof(tmp));
-}
-
-static void
-g_string_append_md5(GString *string, char *key)
-{
-	unsigned char tmp[MD5_DIGEST_LENGTH + sizeof(rand)];
-	MD5((unsigned char *) key, strlen(key), tmp);
-	g_string_append_base64(string, tmp, sizeof(tmp));
-}
-
-static void
-g_string_append_smd5(GString *string, char *key)
-{
-	char rand[4];
-	unsigned char tmp[MD5_DIGEST_LENGTH + sizeof(rand)];
-	MD5_CTX MD5context;
-
-	RAND_pseudo_bytes(rand, sizeof(rand));
-
-	MD5_Init(&MD5context);
-	MD5_Update(&MD5context, key, strlen(key));
-	MD5_Update(&MD5context, rand, sizeof(rand));
-	MD5_Final(tmp, &MD5context);
-
-	memcpy(tmp + MD5_DIGEST_LENGTH, rand, sizeof(rand));
-	g_string_append_base64(string, tmp, sizeof(tmp));
-}
-
 static int
 read_line(FILE *s, GString *name, GString *value)
 {
@@ -310,19 +256,19 @@ read_line(FILE *s, GString *name, GString *value)
 	} else if (!strcasecmp(encoding, "sha")) {
 		if (read_ldif_attrval(s, value) == -1) return -1;
 		g_string_assign(value, "{SHA}");
-		g_string_append_sha(value, value->str);
+		if (!g_string_append_sha(value, value->str)) return -1;
 	} else if (!strcasecmp(encoding, "ssha")) {
 		if (read_ldif_attrval(s, value) == -1) return -1;
 		g_string_assign(value, "{SSHA}");
-		g_string_append_ssha(value, value->str);
+		if (!g_string_append_ssha(value, value->str)) return -1;
 	} else if (!strcasecmp(encoding, "md5")) {
 		if (read_ldif_attrval(s, value) == -1) return -1;
 		g_string_assign(value, "{MD5}");
-		g_string_append_md5(value, value->str);
+		if (!g_string_append_md5(value, value->str)) return -1;
 	} else if (!strcasecmp(encoding, "smd5")) {
 		if (read_ldif_attrval(s, value) == -1) return -1;
 		g_string_assign(value, "{SMD5}");
-		g_string_append_smd5(value, value->str);
+		if (!g_string_append_smd5(value, value->str)) return -1;
 	} else {
 		char *ptr;
 		int n = strtol(encoding, &ptr, 10);

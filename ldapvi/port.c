@@ -21,6 +21,8 @@
 #include <ldap.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/termios.h>
@@ -28,6 +30,20 @@
 #include <unistd.h>
 
 #include "config.h"
+
+#if defined(HAVE_OPENSSL)
+#include <openssl/sha.h>
+#include <openssl/md5.h>
+#elif defined(HAVE_GNUTLS)
+#include <gnutls/gnutls.h>
+#include <gnutls/openssl.h>
+#else
+#error oops
+#endif
+
+#ifndef HAVE_RAND_PSEUDO_BYTES
+#define RAND_pseudo_bytes RAND_bytes
+#endif
 
 #ifndef HAVE_MKDTEMP
 char *
@@ -86,3 +102,70 @@ on_exit(void (*function)(int, void *), void *arg)
 	return atexit(atexitfunction);
 }
 #endif
+
+int
+g_string_append_sha(GString *string, char *key)
+{
+#ifdef HAVE_SHA1
+	unsigned char tmp[SHA_DIGEST_LENGTH];
+	SHA1((unsigned char *) key, strlen(key), tmp);
+	g_string_append_base64(string, tmp, sizeof(tmp));
+	return 1;
+#else
+	puts("Sorry, SHA1 support not linked into ldapvi.");
+	return 0;
+#endif
+}
+
+int
+g_string_append_ssha(GString *string, char *key)
+{
+#ifdef HAVE_SHA1
+	char rand[4];
+	unsigned char tmp[SHA_DIGEST_LENGTH + sizeof(rand)];
+	SHA_CTX SHA1context;
+
+	RAND_pseudo_bytes(rand, sizeof(rand));
+
+	SHA1_Init(&SHA1context);
+	SHA1_Update(&SHA1context, key, strlen(key));
+	SHA1_Update(&SHA1context, rand, sizeof(rand));
+	SHA1_Final(tmp, &SHA1context);
+
+	memcpy(tmp + SHA_DIGEST_LENGTH, rand, sizeof(rand));
+	g_string_append_base64(string, tmp, sizeof(tmp));
+	return 1;
+#else
+	puts("Sorry, SHA1 support not linked into ldapvi.");
+	return 0;
+#endif
+}
+
+int
+g_string_append_md5(GString *string, char *key)
+{
+	unsigned char tmp[MD5_DIGEST_LENGTH + sizeof(rand)];
+	MD5((unsigned char *) key, strlen(key), tmp);
+	g_string_append_base64(string, tmp, sizeof(tmp));
+	return 1;
+}
+
+int
+g_string_append_smd5(GString *string, char *key)
+{
+	unsigned char rand[4];
+	unsigned char tmp[MD5_DIGEST_LENGTH + sizeof(rand)];
+	MD5_CTX MD5context;
+
+	RAND_pseudo_bytes(rand, sizeof(rand));
+
+	MD5_Init(&MD5context);
+	MD5_Update(&MD5context, key, strlen(key));
+	MD5_Update(&MD5context, rand, sizeof(rand));
+	MD5_Final(tmp, &MD5context);
+
+	memcpy(tmp + MD5_DIGEST_LENGTH, rand, sizeof(rand));
+	g_string_append_base64(string, tmp, sizeof(tmp));
+
+	return 1;
+}

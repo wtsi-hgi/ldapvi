@@ -174,6 +174,10 @@ GArray *search(
  * port.c
  */
 typedef void (*on_exit_function)(int, void *);
+int g_string_append_sha(GString *string, char *key);
+int g_string_append_ssha(GString *string, char *key);
+int g_string_append_md5(GString *string, char *key);
+int g_string_append_smd5(GString *string, char *key);
 
 /*
  * base64.c

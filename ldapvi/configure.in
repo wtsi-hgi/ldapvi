@@ -48,10 +48,31 @@ LIBS="`$PKG_CONFIG --libs glib-2.0` $LIBS"
 CFLAGS="`$PKG_CONFIG --cflags glib-2.0` $CFLAGS"
 AC_CHECK_LIB([glib-2.0],[main],:,AC_MSG_ERROR([libglib2.0 not found]))
 
-# OpenSSL
-LIBS="`$PKG_CONFIG --libs openssl` $LIBS"
-CFLAGS="`$PKG_CONFIG --cflags openssl` $CFLAGS"
-AC_CHECK_LIB([ssl],[main],,AC_MSG_ERROR([OpenSSL not found]))
+# libcrypto
+AC_ARG_WITH(libcrypto, [  --with-libcrypto=(openssl|gnutls)
+                          default is openssl],,with_libcrypto=openssl)
+
+case $with_libcrypto in
+	openssl)
+		LIBS="`$PKG_CONFIG --libs openssl` $LIBS"
+		CFLAGS="`$PKG_CONFIG --cflags openssl` $CFLAGS"
+		AC_CHECK_LIB([ssl],[main],,AC_MSG_ERROR([OpenSSL not found]))
+		AC_DEFINE(HAVE_OPENSSL)
+		;;
+	gnutls)
+		LIBS="`$PKG_CONFIG --libs gnutls` $LIBS"
+		CFLAGS="`$PKG_CONFIG --cflags gnutls` $CFLAGS"
+		AC_CHECK_LIB([gnutls],[main],,AC_MSG_ERROR([GnuTLS not found]))
+		AC_CHECK_LIB([gnutls-openssl],[main],,AC_MSG_ERROR([libgnutls-openssl not found]))
+		AC_DEFINE(HAVE_GNUTLS)
+		AC_DEFINE(SHA_DIGEST_LENGTH,20)
+		;;
+	*)
+		AC_MSG_ERROR([invalid value --with-libcrypto=$with_libcrypto, expected openssl or gnutls])
+		;;
+esac
+AC_CHECK_FUNCS([SHA1])
+AC_CHECK_FUNCS([RAND_pseudo_bytes])
 
 AC_CHECK_LIB([crypt],[main])
 
