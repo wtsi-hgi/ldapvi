@@ -215,7 +215,7 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty)
 	if (!offsets->len) {
 		if (!cmdline->progress) /* if not printed already... */
 			fputs("No search results.  ", stderr);
-		fputs("(Maybe use --add instead?)\n", stderr);
+		fputs("(Maybe use --add or --discover instead?)\n", stderr);
 		exit(0);
 	}
 
