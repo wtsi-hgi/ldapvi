@@ -1,4 +1,5 @@
   - always replace entire attributes (fixing a bug reported by Javier Barroso)
+  - preprocessor sellout: automagically #ifdefed support for libldap 2.1
 
 1.5 2005-12-11
   - fixed argument parsing (thanks to Andrea Barisani for the report)
@@ -12,7 +13,7 @@
   - workaround for Microsoft ROOT DSE oddity: need * instead of +
 
 1.3 2005-11-13 r33
-  * last release to support (and require) libldap 2.1
+  * last release to require libldap 2.1
   - in ldap_delete, treat notAllowedOnNonLeaf as non-fatal, allowing
     subtrees to be deleted in incorrect order
   - check for empty DNs later, so that search results including the

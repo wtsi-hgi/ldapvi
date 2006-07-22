@@ -30,7 +30,7 @@ AC_CHECK_LIB([resolv],[main])
 AC_CHECK_LIB([lber],[main])
 AC_CHECK_LIB([ldap],[main],:,AC_MSG_ERROR([libldap not found]))
 AC_CHECK_LIB([ldap],[ldap_initialize],,AC_MSG_ERROR([libldap present but obsolete]))
-AC_CHECK_LIB([ldap],[ldap_bv2dn_x],,AC_MSG_ERROR([libldap 2.2 is required]))
+AC_CHECK_LIB([ldap],[ldap_bv2dn_x],AC_DEFINE(LIBLDAP22),AC_DEFINE(LIBLDAP21))
 
 # terminfo
 AC_SEARCH_LIBS([tigetstr],[curses ncurses],,AC_MSG_ERROR([libcurses not found]))

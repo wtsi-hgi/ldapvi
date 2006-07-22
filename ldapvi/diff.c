@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include "common.h"
+#include "config.h"
 
 typedef void (*note_function)(void *, void *, void *);
 
@@ -198,6 +199,10 @@ frob_ava(tentry *entry, int mode, char *ad, char *data, int n)
 	return 0;
 }
 
+#if defined(LIBLDAP21)
+#warning compiling for libldap <= 2.1, running with >= 2.2 will result in segfault
+#define safe_str2dn ldap_str2dn
+#elif defined(LIBLDAP22)
 /*
  * the following is exactly equivalent to ldap_str2dn in libldap >= 2.2,
  * but will fail linking on 2.1.  This way we avoid calling the old 2.1
@@ -211,6 +216,9 @@ safe_str2dn(char *str, LDAPDN *out, int flags)
         bv.bv_len = strlen(str);
         ldap_bv2dn_x(&bv, out, flags);
 }
+#else
+#error oops
+#endif
 
 /*
  * Call frob_ava for every ava in DN's (first) RDN.
@@ -221,14 +229,22 @@ safe_str2dn(char *str, LDAPDN *out, int flags)
 int
 frob_rdn(tentry *entry, char *dn, int mode)
 {
+#ifdef LIBLDAP21
+	LDAPDN *olddn;
+#else
 	LDAPDN olddn;
+#endif
 	LDAPRDN rdn;
 	int i;
 	int rc = 0;
 
 	safe_str2dn(dn, &olddn, LDAP_DN_FORMAT_LDAPV3);
 
+#ifdef LIBLDAP21
+	rdn = (**olddn)[0];
+#else
 	rdn = olddn[0];
+#endif
 	for (i = 0; rdn[i]; i++) {
 		LDAPAVA *ava = rdn[i];
 		char *ad = ava->la_attr.bv_val; /* XXX */

@@ -1,2 +1,4 @@
 #undef HAVE_MKDTEMP
 #undef HAVE_ON_EXIT
+#undef LIBLDAP21
+#undef LIBLDAP22
