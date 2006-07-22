@@ -146,7 +146,11 @@ value-spec = (SPACE escaped-string /            ;escape CR/LF with '\\\\'
               ":" number SPACE 0*1(octet) /     ;exactly `number' octets
               ":<" SPACE url /                  ;only file:// supported
               ":crypt" SPACE password /         ;for userPassword
+              ":cryptmd5" SPACE password /
               ":md5" SPACE password /
+              ":smd5" SPACE password /
+              ":sha" SPACE password /
+              ":ssha" SPACE password /
               ;; other encoding markers reserved
              )
 

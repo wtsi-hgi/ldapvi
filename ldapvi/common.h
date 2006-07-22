@@ -179,4 +179,6 @@ typedef void (*on_exit_function)(int, void *);
  * base64.c
  */
 void print_base64(unsigned char const *src, size_t srclength, FILE *s);
+void g_string_append_base64(
+	GString *string, unsigned char const *src, size_t srclength);
 int read_base64(char const *src, unsigned char *target, size_t targsize);

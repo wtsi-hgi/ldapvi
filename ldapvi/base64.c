@@ -107,6 +107,60 @@ print_base64(
 	}
 }
 
+/* na toll, copy und paste von oben */
+void
+g_string_append_base64(
+	GString *string, unsigned char const *src, size_t srclength)
+{
+	unsigned char input[3];
+	unsigned char output[4];
+	size_t i;
+	int col = 0;
+
+	while (2 < srclength) {
+		input[0] = *src++;
+		input[1] = *src++;
+		input[2] = *src++;
+		srclength -= 3;
+
+		output[0] = input[0] >> 2;
+		output[1] = ((input[0] & 0x03) << 4) + (input[1] >> 4);
+		output[2] = ((input[1] & 0x0f) << 2) + (input[2] >> 6);
+		output[3] = input[2] & 0x3f;
+
+		if (col >= 76) {
+			g_string_append(string, "\n ");
+			col = 0;
+		}
+		col += 4;
+
+		g_string_append_c(string, Base64[output[0]]);
+		g_string_append_c(string, Base64[output[1]]);
+		g_string_append_c(string, Base64[output[2]]);
+		g_string_append_c(string, Base64[output[3]]);
+	}
+    
+	/* Now we worry about padding. */
+	if (0 != srclength) {
+		/* Get what's left. */
+		input[0] = input[1] = input[2] = '\0';
+		for (i = 0; i < srclength; i++)
+			input[i] = *src++;
+	
+		output[0] = input[0] >> 2;
+		output[1] = ((input[0] & 0x03) << 4) + (input[1] >> 4);
+		output[2] = ((input[1] & 0x0f) << 2) + (input[2] >> 6);
+
+		g_string_append_c(string, Base64[output[0]]);
+		g_string_append_c(string, Base64[output[1]]);
+		if (srclength == 1)
+			g_string_append_c(string, Pad64);
+		else
+			g_string_append_c(string, Base64[output[2]]);
+		g_string_append_c(string, Pad64);
+	}
+}
+
 int
 read_base64(
 	char const *src,

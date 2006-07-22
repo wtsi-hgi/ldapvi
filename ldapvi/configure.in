@@ -39,12 +39,19 @@ AC_CHECK_HEADER([curses.h],,AC_MSG_ERROR([curses.h not found]))
 # popt
 AC_CHECK_LIB([popt],[poptGetContext],,AC_MSG_ERROR([libpopt not found]))
 
-# glib
+# pkg-config
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
 if test "x$PKG_CONFIG" = "xno"; then AC_MSG_ERROR([pkg-config not found]); fi
+
+# glib
 LIBS="`$PKG_CONFIG --libs glib-2.0` $LIBS"
 CFLAGS="`$PKG_CONFIG --cflags glib-2.0` $CFLAGS"
 AC_CHECK_LIB([glib-2.0],[main],:,AC_MSG_ERROR([libglib2.0 not found]))
+
+# OpenSSL
+LIBS="`$PKG_CONFIG --libs openssl` $LIBS"
+CFLAGS="`$PKG_CONFIG --cflags openssl` $CFLAGS"
+AC_CHECK_LIB([ssl],[main],,AC_MSG_ERROR([OpenSSL not found]))
 
 AC_CHECK_LIB([crypt],[main])
 
