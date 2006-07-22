@@ -144,7 +144,7 @@ g_string_append_ssha(GString *string, char *key)
 int
 g_string_append_md5(GString *string, char *key)
 {
-	unsigned char tmp[MD5_DIGEST_LENGTH + sizeof(rand)];
+	unsigned char tmp[MD5_DIGEST_LENGTH];
 	MD5((unsigned char *) key, strlen(key), tmp);
 	g_string_append_base64(string, tmp, sizeof(tmp));
 	return 1;
