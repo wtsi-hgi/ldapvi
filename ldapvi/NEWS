@@ -2,8 +2,8 @@
   - always replace entire attributes (fixing a bug reported by Javier Barroso)
   - preprocessor sellout: automagically #ifdefed support for libldap 2.1
   - incompatible change: value encoding md5 renamed to cryptmd5
-work in progress:
   - new value encodings md5, smd5, sha1, ssha1 (thanks to Michael Hanselmann)
+  - new configure option --with-libcrypto
 
 1.5 2005-12-11
   - fixed argument parsing (thanks to Andrea Barisani for the report)
