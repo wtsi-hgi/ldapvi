@@ -171,29 +171,34 @@ string2berval(GArray *s)
 	return bv;
 }
 
+LDAPMod *
+attribute2mods(tattribute *attribute)
+{
+	GPtrArray *values = attribute_values(attribute);
+	LDAPMod *m = xalloc(sizeof(LDAPMod));
+	int j;
+
+	m->mod_op = LDAP_MOD_BVALUES;
+	m->mod_type = xdup(attribute_ad(attribute));
+	m->mod_bvalues = xalloc(
+		(1 + values->len) * sizeof(struct berval *));
+
+	for (j = 0; j < values->len; j++)
+		m->mod_bvalues[j]
+			= string2berval(g_ptr_array_index(values, j));
+	m->mod_bvalues[j] = 0;
+	return m;
+}
+
 LDAPMod **
 entry2mods(tentry *entry)
 {
 	GPtrArray *attributes = entry_attributes(entry);
 	LDAPMod **result = xalloc((attributes->len + 1) * sizeof(LDAPMod *));
-	int i, j;
+	int i;
 
-	for (i = 0; i < attributes->len; i++) {
-		tattribute *attribute = g_ptr_array_index(attributes, i);
-		GPtrArray *values = attribute_values(attribute);
-		LDAPMod *m = xalloc(sizeof(LDAPMod));
-
-		m->mod_op = LDAP_MOD_BVALUES;
-		m->mod_type = xdup(attribute_ad(attribute));
-		m->mod_bvalues = xalloc(
-			(1 + values->len) * sizeof(struct berval *));
-
-		for (j = 0; j < values->len; j++)
-			m->mod_bvalues[j]
-				= string2berval(g_ptr_array_index(values, j));
-		m->mod_bvalues[j] = 0;
-		result[i] = m;
-	}
+	for (i = 0; i < attributes->len; i++)
+		result[i] = attribute2mods(g_ptr_array_index(attributes, i));
 	result[i] = 0;
 	return result;
 }

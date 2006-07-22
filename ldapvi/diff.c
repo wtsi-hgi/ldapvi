@@ -45,42 +45,24 @@ compare_ptr_arrays(GPtrArray *a, GPtrArray *b,
 }
 
 static void
-note_values(GArray *a, GArray *b, GPtrArray *mods)
+note_values(GArray *a, GArray *b, int *changed)
 {
-	GArray *v;
-	LDAPMod *m;
-
-	if (a && b) return;
-
-	m = xalloc(sizeof(LDAPMod));
-	if (a) {
-		v = a;
-		m->mod_op = LDAP_MOD_DELETE;
-	} else {
-		v = b;
-		m->mod_op = LDAP_MOD_ADD;
-	}
-	m->mod_op |= LDAP_MOD_BVALUES;
-	m->mod_type = 0;
-	m->mod_bvalues = xalloc(2 * sizeof(struct berval *));
-	m->mod_bvalues[0] = string2berval(v);
-	m->mod_bvalues[1] = 0;
-	g_ptr_array_add(mods, m);
+	if (!(a && b)) *changed = 1;
 }
 
 static void
 compare_attributes(tattribute *clean, tattribute *new, GPtrArray *mods)
 {
-	int i;
+	int changed = 0;
 	compare_ptr_arrays(attribute_values(clean),
 			   attribute_values(new),
 			   carray_ptr_cmp,
 			   (note_function) note_values,
-			   mods);
-	for (i = mods->len - 1; i >= 0; i--) {
-		LDAPMod *m = g_ptr_array_index(mods, i);
-		if (m->mod_type) break;
-		m->mod_type = xdup(attribute_ad(clean));
+			   &changed);
+	if (changed) {
+		LDAPMod *m = attribute2mods(new);
+		m->mod_op |= LDAP_MOD_REPLACE;
+		g_ptr_array_add(mods, m);
 	}
 }
 

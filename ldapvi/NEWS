@@ -1,3 +1,5 @@
+  - always replace entire attributes (fixing a bug reported by Javier Barroso)
+
 1.5 2005-12-11
   - fixed argument parsing (thanks to Andrea Barisani for the report)
 

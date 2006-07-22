@@ -101,6 +101,7 @@ int attribute_cmp(tattribute *a, tattribute *b);
 
 int named_array_ptr_cmp(const void *aa, const void *bb);
 
+LDAPMod *attribute2mods(tattribute *attribute);
 LDAPMod **entry2mods(tentry *entry);
 tattribute *entry_find_attribute(tentry *entry, char *ad, int createp);
 void attribute_append_value(tattribute *attribute, char *data, int n);
