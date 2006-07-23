@@ -68,7 +68,7 @@
 "A special (offline) option is --diff, which compares two files\n"	   \
 "and writes any changes to standard output in LDIF format.\n"		   \
 "\n"									   \
-"Report bugs to \"david@lichteblau.com\"."
+"Report bugs to \"ldapvi@lists.askja.de\"."
 
 #define OPTION_TLS 1000
 

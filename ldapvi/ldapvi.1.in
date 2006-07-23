@@ -56,5 +56,8 @@ escaped-string = *(unescaped-char / %x5c %x0a / %x5c %x0d / %x5c %x5c)
 password = 0*unescaped-char
 SEP = LF                                        ;this is a unix program!
 
+.SH BUGS
+Please report bugs to <ldapvi@lists.askja.de>.
+
 .SH AUTHOR
 David Lichteblau <david@lichteblau.com>
