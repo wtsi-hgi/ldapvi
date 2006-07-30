@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -194,6 +194,30 @@ ldif_handler(tentry *clean, tentry *modified, LDAPMod **mods, void *userdata)
 		print_ldif_add(s, entry_dn(modified), mods);
 	else if (clean)
 		print_ldif_delete(s, entry_dn(clean));
+	else
+		abort();
+	return 0;
+}
+
+static int
+vdif_handler(tentry *clean, tentry *modified, LDAPMod **mods, void *userdata)
+{
+	FILE *s = userdata;
+	if (clean && modified) {
+		if (mods)
+			print_ldapvi_modify(s, entry_dn(modified), mods);
+		else {
+			char *dn1 = entry_dn(clean);
+			int deleteoldrdn =
+				frob_rdn(modified, dn1, FROB_RDN_CHECK) == -1;
+			print_ldapvi_rename(
+				s, entry_dn(clean), entry_dn(modified),
+				deleteoldrdn);
+		}
+	} else if (modified)
+		print_ldapvi_add(s, entry_dn(modified), mods);
+	else if (clean)
+		print_ldapvi_delete(s, entry_dn(clean));
 	else
 		abort();
 	return 0;
@@ -469,6 +493,19 @@ view_ldif(char *dir, GArray *offsets, char *clean, char *data)
 }
 
 static void
+view_vdif(char *dir, GArray *offsets, char *clean, char *data)
+{
+	FILE *s;
+	char *name = append(dir, "/vdif");
+	if ( !(s = fopen(name, "w"))) syserr();
+	fputs("version: ldapvi\n", s);
+	compare(vdif_handler, s, offsets, clean, data, 0);
+	if (fclose(s) == EOF) syserr();
+	view(name);
+	free(name);
+}
+
+static void
 setcolor(int fg)
 {
 	char *bold = tigetstr("bold");
@@ -589,13 +626,26 @@ skip(char *dataname, GArray *offsets)
 	long pos;
 	char *key;
 	char *tmpname = append(dataname, ".tmp");
+	FILE *s;
 
-	/* find file position right after entry */
-	tentry *entry;
-	FILE *s = fopen(dataname, "r");
-	if (!s) syserr();
-	read_entry(s, 0, &key, &entry, 0);
-        if (!entry) {
+	if ( !(s = fopen(dataname, "r"))) syserr();
+	skip_entry(s, 0, &key);
+	if ( (pos = ftell(s)) == -1) syserr();
+	if (fclose(s) == EOF) syserr();
+
+	if (key) {
+		/* remove from datafile */
+		cp(dataname, tmpname, pos, 0);
+		rename(tmpname, dataname);
+		free(tmpname);
+
+		/* remove entry from offsets table */
+		if (strcmp(key, "add")
+		    && strcmp(key, "rename")
+		    && strcmp(key, "modify"))
+			g_array_index(offsets, long, atoi(key)) = -1;
+		free(key);
+	} else {
                 /* Im Normalfall wollen wir einen Eintrag in data
                  * ueberspringen.  Wenn aber in data nichts mehr steht,
                  * sind wir ueber die eigentlichen Aenderungen schon
@@ -609,20 +659,7 @@ skip(char *dataname, GArray *offsets)
 				break;
 			}
                 if (fclose(s) == EOF) syserr();
-                return;
-        }
-	entry_free(entry);
-	if ( (pos = ftell(s)) == -1) syserr();
-	if (fclose(s) == EOF) syserr();
-
-	/* remove from datafile */
-	cp(dataname, tmpname, pos, 0);
-	rename(tmpname, dataname);
-	free(tmpname);
-
-	/* remove entry from offsets table */
-	if (strcmp(key, "add"))
-		g_array_index(offsets, long, atoi(key)) = -1;
+	}
 }
 
 static void
@@ -1011,7 +1048,7 @@ main(int argc, const char **argv)
 		if (changed)
 			if (!analyze_changes(offsets, clean, data)) return 0;
 		changed = 0;
-		switch (choose("Action?", "yqQvebrs?", "(Type '?' for help.)")) {
+		switch (choose("Action?", "yqQvVebrs?", "(Type '?' for help.)")) {
 		case 'y':
 			commit(ld, offsets, clean, data, (void *) ctrls->pdata,
 			       cmdline.verbose, 0);
@@ -1028,6 +1065,9 @@ main(int argc, const char **argv)
 			return 0;
 		case 'v':
 			view_ldif(dir, offsets, clean, data);
+			break;
+		case 'V':
+			view_vdif(dir, offsets, clean, data);
 			break;
 		case 'e':
 			edit(data, 0);
@@ -1059,7 +1099,8 @@ main(int argc, const char **argv)
 			     "  y -- commit changes\n"
 			     "  q -- save changes as LDIF and quit\n"
 			     "  Q -- discard changes and quit\n"
-			     "  v -- view changes as LDIF\n"
+			     "  v -- view changes as LDIF change records\n"
+			     "  V -- view changes as ldapvi change records\n"
 			     "  e -- open editor again\n"
 			     "  b -- ask for user name and rebind\n"
 			     "  r -- reconnect to server\n"

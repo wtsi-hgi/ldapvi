@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -109,11 +109,15 @@ int attribute_find_value(tattribute *attribute, char *data, int n);
 int attribute_remove_value(tattribute *a, char *data, int n);
 
 struct berval *string2berval(GArray *s);
+struct berval *gstring2berval(GString *s);
 
 /*
  * parse.c
  */
 int read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos);
+int read_rename(FILE *s, long offset, char **dn1, char **dn2);
+int read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods);
+int skip_entry(FILE *s, long offset, char **key);
 
 /*
  * diff.c
@@ -157,6 +161,10 @@ int safe_string_p(char *str, int n);
 int readable_string_p(char *str, int n);
 void print_attrval(FILE *s, char *str, int len);
 void print_entry_object(FILE *s, tentry *entry, char *key);
+void print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods);
+void print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
+void print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods);
+void print_ldapvi_delete(FILE *s, char *dn);
 void print_ldif_modify(FILE *s, char *dn, LDAPMod **mods);
 void print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
 void print_ldif_add(FILE *s, char *dn, LDAPMod **mods);

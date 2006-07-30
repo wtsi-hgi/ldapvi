@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -161,14 +161,29 @@ attribute_remove_value(tattribute *a, char *data, int n)
 	return 0;
 }
 
+/*
+ * allocate a new berval and copy LEN bytes of DATA into it
+ */
+static struct berval *
+dup2berval(char *data, int len)
+{
+	struct berval *bv = xalloc(sizeof(struct berval));
+	bv->bv_val = xalloc(len);
+	memcpy(bv->bv_val, data, len);
+	bv->bv_len = len;
+	return bv;
+}
+
 struct berval *
 string2berval(GArray *s)
 {
-	struct berval *bv = xalloc(sizeof(struct berval));
-	bv->bv_val = xalloc(s->len);
-	memcpy(bv->bv_val, s->data, s->len);
-	bv->bv_len = s->len;
-	return bv;
+	return dup2berval(s->data, s->len);
+}
+
+struct berval *
+gstring2berval(GString *s)
+{
+	return dup2berval(s->str, s->len);
 }
 
 LDAPMod *

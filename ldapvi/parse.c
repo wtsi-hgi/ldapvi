@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -181,8 +181,18 @@ cryptmd5(char *key)
 	return result;
 }
 
+/*
+ * Read a line in 
+ *   name ' ' (':' encoding)? value '\n'
+ * syntax, skipping comments.  VALUE is parsed according to ENCODING.
+ * Empty NAME is allowed.
+ *
+ * 0: ok
+ * -1: fatal parse error
+ * -2: end of file or empty line
+ */
 static int
-read_line(FILE *s, GString *name, GString *value)
+read_line1(FILE *s, GString *name, GString *value)
 {
 	int c;
 	char *encoding;
@@ -196,9 +206,9 @@ read_line(FILE *s, GString *name, GString *value)
 		switch (c) {
 		case EOF:
 			if (ferror(s)) syserr();
-			return 0;
+			return -2;
 		case '\n':
-			return 0;
+			return -2;
 		case '#':
 			if (skip_comment(s) == -1) return -1;
 			break;
@@ -209,17 +219,13 @@ read_line(FILE *s, GString *name, GString *value)
 	} while (c != -1);
 
 	if (read_lhs(s, name) == -1) return -1;
-	if (!name->len) {
-		fputs("Error: Space at beginning of line.\n", stderr);
-		return -1;
-	}
 	if ( encoding = memchr(name->str, ':', name->len)) {
 		encoding++;
 		name->len = encoding - name->str - 1;
 		name->str[name->len] = 0;
 	}
 
-	if (!encoding) {
+	if (!encoding || !strcmp(encoding, ";")) {
 		if (read_backslashed(s, value) == -1) return -1;
 	} else if (!*encoding) {
 		if (read_ldif_attrval(s, value) == -1) return -1;
@@ -282,8 +288,140 @@ read_line(FILE *s, GString *name, GString *value)
 	return 0;
 }
 
-int
-read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
+
+/*
+ * Read a line in 
+ *   name ' ' (':' encoding)? value '\n'
+ * syntax, skipping comments.  VALUE is parsed according to ENCODING.
+ * Empty NAME is a parse error.
+ *
+ * 0: ok                           if name->len != 0
+ * 0: end of file or empty line    if name->len == 0
+ * -1: parse error
+ */
+static int
+read_line(FILE *s, GString *name, GString *value)
+{
+	int rc = read_line1(s, name, value);
+	switch (rc) {
+	case -2:
+		return 0;
+	case -1:
+		return -1;
+	case 0:
+		if (!name->len) {
+			fputs("Error: Space at beginning of line.\n", stderr);
+			return -1;
+		}
+		return 0;
+	default:
+		abort();
+	}
+}
+
+static char *
+read_aux_rename(FILE *s, GString *tmp1, GString *tmp2)
+{
+	char *dn;
+	
+	if (read_line(s, tmp1, tmp2) == -1)
+		return 0;
+	if (!tmp1->len || strcmp(tmp1->str, "dn")) {
+		fputs("Error: Rename record lacks dn line.\n", stderr);
+		return 0;
+	}
+	dn = xdup(tmp2->str);
+	if (read_line(s, tmp1, tmp2) == -1) {
+		free(dn);
+		return 0;
+	}
+	if (tmp1->len) {
+		free(dn);
+		fputs("Error: Garbage at end of rename record.\n", stderr);
+		return 0;
+	}
+	return dn;
+}
+
+static LDAPMod *
+line2ldapmod(char *ad, char *action)
+{
+	LDAPMod *m;
+	int op;
+	
+ 	if (!strcmp(action, "add"))
+		op = LDAP_MOD_ADD;
+	else if (!strcmp(action, "delete"))
+		op = LDAP_MOD_DELETE;
+	else if (!strcmp(action, "replace"))
+		op = LDAP_MOD_REPLACE;
+	else {
+		fputs("Error: Invalid change marker.\n", stderr);
+		return 0;
+	}
+
+	m = xalloc(sizeof(LDAPMod));
+	m->mod_op = op | LDAP_MOD_BVALUES;
+	m->mod_type = xdup(ad);
+	return m;
+}
+
+static LDAPMod **
+read_aux_modify(FILE *s, GString *tmp1, GString *tmp2)
+{
+	LDAPMod **result;
+	GPtrArray *mods = g_ptr_array_new();
+	GPtrArray *values;
+	LDAPMod *m = 0;
+
+	for (;;) {
+		switch (read_line1(s, tmp1, tmp2)) {
+		case 0:
+			break;
+		case -1:
+			goto error;
+		case -2:
+			if (m) {
+				g_ptr_array_add(values, 0);
+				m->mod_bvalues = (void *) values->pdata;
+				g_ptr_array_free(values, 0);
+			}
+			goto done;
+		default:
+			abort();
+		}
+		if (tmp1->len) {
+			if (m) {
+				g_ptr_array_add(values, 0);
+				m->mod_bvalues = (void *) values->pdata;
+				g_ptr_array_free(values, 0);
+			}
+			values = g_ptr_array_new();
+			if ( !(m = line2ldapmod(tmp1->str, tmp2->str)))
+				goto error;
+			g_ptr_array_add(mods, m);
+		} else
+			g_ptr_array_add(values, gstring2berval(tmp2));
+	}
+done:
+
+	g_ptr_array_add(mods, 0);
+	result = (LDAPMod **) mods->pdata;
+	g_ptr_array_free(mods, 0);
+	return result;
+
+error:
+	/* fixme */
+	g_ptr_array_free(mods, 1);
+	return 0;
+}
+
+/* FIXME: memory management-frage: wenn ein fehler passiert und entry
+ * angegeben wurde wird result nicht freigegeben.  ist das notwendig und
+ * muss der aufrufer das also pruefen?  machen die das alle? */
+static int
+read_entry1(FILE *s, long offset, char **key, tentry **entry, long *pos,
+	    LDAPMod ***mods, char **entrydn, char **newdn)
 {
 	GString *name = g_string_new("");
 	GString *value = g_string_new("");
@@ -303,24 +441,53 @@ read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
 	rdns = ldap_explode_dn(value->str, 0);
 	if (!rdns) {
 		fputs("Error: Invalid distinguished name string.\n", stderr);
-		return -1;
-	}
-
-	if (key) *key = xdup(name->str);
-	if (entry)
-		result = entry_new(xdup(value->str));
-	else
+		rc = -1;
 		goto cleanup;
-
-	for (;;) {
-		tattribute *attribute;
-		
-		if (read_line(s, name, value) == -1) { rc = -1; goto cleanup; }
-		if (!name->len) break;
-		attribute = entry_find_attribute(result, name->str, 1);
-		attribute_append_value(attribute, value->str, value->len);
 	}
 
+	if (key)
+		*key = xdup(name->str);
+	if (!strcmp(name->str, "rename")) {
+		char *old = xdup(value->str);
+		char *dn;
+		if (!newdn) goto cleanup;
+		if ( !(dn = read_aux_rename(s, name, value))) {
+			free(old);
+			rc = -1;
+			goto cleanup;
+		}
+		*entrydn = old;
+		*newdn = dn;
+	} else if (!strcmp(name->str, "modify")) {
+		char *old = xdup(value->str);
+		LDAPMod **m;
+		if (!mods) goto cleanup;
+		if ( !(m = read_aux_modify(s, name, value))) {
+			free(old);
+			rc = -1;
+			goto cleanup;
+		}
+		*entrydn = old;
+		*mods = m;
+	} else {
+		if (!entry) goto cleanup;
+		result = entry_new(xdup(value->str));
+
+		for (;;) {
+			tattribute *attribute;
+		
+			if (read_line(s, name, value) == -1) {
+				rc = -1;
+				goto cleanup;
+			}
+			if (!name->len)
+				break;
+			attribute = entry_find_attribute(result, name->str, 1);
+			attribute_append_value(
+				attribute, value->str, value->len);
+		}
+	}
+	
 cleanup:
 	g_string_free(name, 1);
 	g_string_free(value, 1);
@@ -329,3 +496,49 @@ cleanup:
 		*entry = result;
 	return rc;
 }
+
+int
+read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
+{
+	return read_entry1(s, offset, key, entry, pos, 0, 0, 0);
+}	
+
+int
+read_rename(FILE *s, long offset, char **dn1, char **dn2)
+{
+	return read_entry1(s, offset, 0, 0, 0, 0, dn1, dn2);
+}	
+
+int
+read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
+{
+	return read_entry1(s, offset, 0, 0, 0, mods, dn, 0);
+}	
+
+/*
+ * Parse a complete entry or changerecord and ignore it.  Set *key accordingly.
+ * Leave the stream positioned after the entry.
+ *
+ * Treat EOF as success and set *key to NULL.
+ *
+ * return value:
+ *   0 on success
+ *   -1 on parse error
+ */
+int
+skip_entry(FILE *s, long offset, char **key)
+{
+	tentry *entry;
+	LDAPMod **mods;
+	char *dn;
+
+	if (read_entry1(s, offset, key, &entry, 0, &mods, 0, &dn) == -1)
+		return -1;
+        if (!entry && !mods)
+		*key = 0;
+
+	if (entry) entry_free(entry);
+	if (dn) free(dn);
+	if (mods) ldap_mods_free(mods, 1);
+	return 0;
+}	

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -363,9 +363,9 @@ more_deletions:
  * and calling read_entry().
  *
  * File DATA, a modified copy of CLEAN may contain entries in any order,
- * which must be numbered or labeled "add".  If a key is a number, the
- * corresponding entry in CLEAN must exist, it is read and compared to
- * the modified copy.
+ * which must be numbered or labeled "add", "rename", or "modify".  If a
+ * key is a number, the corresponding entry in CLEAN must exist, it is
+ * read and compared to the modified copy.
  *
  * For each change, call handler with arguments described below.
  * Handlers must return 0 on success, or -1 on failure.  (As a special
@@ -389,6 +389,11 @@ more_deletions:
  * for attribute modifications due to a possible RDN change (new RDN
  * component values have to be added, and old RDN values be removed),
  * and MODS describes the changes between RENAMED_ENTRY and NEW_ENTRY.
+ *
+ * Entries labeled "rename" or "delete" are changerecords for which the
+ * handler is called as described above, except that the entry
+ * structures are used only to specify the old and new DN and are
+ * otherwise empty.
  *
  * Return 0 on success, -1 on parse error, -2 on handler failure.
  *
@@ -424,7 +429,7 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 		*error_position = datapos;
 		if (!key) break;
 
-		/* new entry? */
+		/* handle immediate changerecords */
 		if (!strcmp(key, "add")) {
 			if (read_entry(data, datapos, 0, &entry, 0) == -1)
 				goto cleanup;
@@ -437,6 +442,36 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 			ldap_mods_free(mods, 1);
 			entry_free(entry);
 			entry = 0;
+			continue;
+		} else if (!strcmp(key, "rename")) {
+			char *dn1;
+			char *dn2;
+			if (read_rename(data, datapos, &dn1, &dn2) ==-1)
+				goto cleanup;
+			cleanentry = entry_new(dn1);
+			entry = entry_new(dn2);
+			if (handler(cleanentry, entry, 0, userdata) == -1) {
+				rc = -2;
+				goto cleanup;
+			}
+			entry_free(cleanentry);
+			entry_free(entry);
+			cleanentry = entry = 0;
+			continue;
+		} else if (!strcmp(key, "modify")) {
+			char *dn;
+			if (read_modify(data, datapos, &dn, &mods) ==-1)
+				goto cleanup;
+			cleanentry = entry_new(dn);
+			entry = entry_new(xdup(dn));
+			if (handler(cleanentry, entry, mods, userdata) == -1) {
+				ldap_mods_free(mods, 1);
+				rc = -2;
+				goto cleanup;
+			}
+			entry_free(cleanentry);
+			entry_free(entry);
+			cleanentry = entry = 0;
 			continue;
 		}
 

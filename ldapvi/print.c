@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@ print_attrval(FILE *s, char *str, int len)
 		fputs(":: ", s);
 		print_base64((unsigned char *) str, len, s);
 	} else if (!safe_string_p(str, len)) {
-		fputc(' ', s);
+		fputs(":; ", s);
 		write_backslashed(s, str, len);
 	} else {
 		fputs(": ", s);
@@ -89,6 +89,81 @@ print_entry_object(FILE *s, tentry *entry, char *key)
 		tattribute *attribute = g_ptr_array_index(attributes, i);
 		print_attribute(s, attribute);
 	}
+}
+
+static void
+print_ldapvi_ldapmod(FILE *s, LDAPMod *mod)
+{
+	struct berval **values = mod->mod_bvalues;
+
+	fputs(mod->mod_type, s);
+	switch (mod->mod_op & ~LDAP_MOD_BVALUES) {
+	case LDAP_MOD_ADD: fputs(": add\n", s); break;
+	case LDAP_MOD_DELETE: fputs(": delete\n", s); break;
+	case LDAP_MOD_REPLACE: fputs(": replace\n", s); break;
+	default: abort();
+	}
+	for (; *values; values++) {
+		struct berval *value = *values;
+		print_attrval(s, value->bv_val, value->bv_len);
+		fputc('\n', s);
+	}
+	if (ferror(s)) syserr();
+}
+
+void
+print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods)
+{
+	fputs("\nmodify", s);
+	print_attrval(s, dn, strlen(dn));
+	fputc('\n', s);
+
+	for (; *mods; mods++)
+		print_ldapvi_ldapmod(s, *mods);
+	if (ferror(s)) syserr();
+}
+
+void
+print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
+{
+	fputs("\nrename", s);
+	print_attrval(s, olddn, strlen(olddn));
+	fputs("\ndn", s);
+	print_attrval(s, newdn, strlen(newdn));
+	/* FIXME: baeh, das ist doch nicht schoen.
+	 * in der manpage dokumentieren muss man es dann auch noch.
+	 */
+	fprintf(s, "\ndeleteoldrdn: %d\n", !!deleteoldrdn);
+	if (ferror(s)) syserr();
+}
+
+void
+print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods)
+{
+	fputs("\nadd", s);
+	print_attrval(s, dn, strlen(dn));
+	fputc('\n', s);
+
+	for (; *mods; mods++) {
+		LDAPMod *mod = *mods;
+		struct berval **values = mod->mod_bvalues;
+		for (; *values; values++) {
+			struct berval *value = *values;
+			fputs(mod->mod_type, s);
+			print_attrval(s, value->bv_val, value->bv_len);
+			fputc('\n', s);
+		}
+	}
+	if (ferror(s)) syserr();
+}
+
+void
+print_ldapvi_delete(FILE *s, char *dn)
+{
+	fputs("\ndelete", s);
+	print_attrval(s, dn, strlen(dn));
+	fputc('\n', s);
+	if (ferror(s)) syserr();
 }
 
 int
