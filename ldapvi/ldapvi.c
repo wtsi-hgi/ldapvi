@@ -20,12 +20,8 @@
 #include "common.h"
 
 static int
-compare(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
-	void *userdata,
-	GArray *offsets,
-	char *cleanname,
-	char *dataname,
-	long *error_position)
+compare(thandler *handler, void *userdata, GArray *offsets, 
+	char *cleanname, char *dataname, long *error_position)
 {
 	FILE *clean, *data;
 	int rc;
@@ -125,101 +121,185 @@ struct ldapmodify_context {
 };
 
 static int
-ldapmodify_handler(tentry *clean, tentry *modified, LDAPMod **mods,
-		   void *userdata)
+ldapmodify_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
 	struct ldapmodify_context *ctx = userdata;
 	LDAP *ld = ctx->ld;
 	LDAPControl **ctrls = ctx->controls;
 	int verbose = ctx->verbose;
 	
-	if (clean && modified) {
-		char *dn1 = entry_dn(clean);
-		char *dn2 = entry_dn(modified);
-		if (mods) {
-			if (verbose) printf("(modify) %s\n", dn1);
-			if (ldap_modify_ext_s(ld, dn2, mods, ctrls, 0)) {
-				ldap_perror(ld, "ldap_modify");
-				return -1;
-			}
-		} else {
-			int deleteoldrdn =
-				frob_rdn(modified, dn1, FROB_RDN_CHECK) == -1;
-			if (verbose) printf("(rename) %s to %s\n", dn1, dn2);
-			if (moddn(ld, dn1, dn2, deleteoldrdn, ctrls)) {
-				ldap_perror(ld, "ldap_rename");
-				return -1;
-			}
-		}
-	} else if (modified) {
-		if (verbose) printf("(add) %s\n", entry_dn(modified));
-		if (ldap_add_ext_s(ld, entry_dn(modified), mods, ctrls, 0)) {
-			ldap_perror(ld, "ldap_add");
-			return -1;
-		}
-	} else if (clean) {
-		if (verbose) printf("(delete) %s\n", entry_dn(clean));
-		switch (ldap_delete_ext_s(ld, entry_dn(clean), ctrls, 0)) {
-		case 0:
-			break;
-		case LDAP_NOT_ALLOWED_ON_NONLEAF:
-			if (!ctx->noquestions)
-				return -2;
-			/* else fall through */
-		default:
-			ldap_perror(ld, "ldap_delete");
-			return -1;
-		}
-	} else
-		abort();
+	if (verbose) printf("(modify) %s\n", labeldn);
+	if (ldap_modify_ext_s(ld, dn, mods, ctrls, 0)) {
+		ldap_perror(ld, "ldap_modify");
+		return -1;
+	}
 	return 0;
 }
 
 static int
-ldif_handler(tentry *clean, tentry *modified, LDAPMod **mods, void *userdata)
+ldapmodify_rename(char *dn1, tentry *modified, void *userdata)
 {
-	FILE *s = userdata;
-	if (clean && modified) {
-		if (mods)
-			print_ldif_modify(s, entry_dn(modified), mods);
-		else {
-			char *dn1 = entry_dn(clean);
-			int deleteoldrdn =
-				frob_rdn(modified, dn1, FROB_RDN_CHECK) == -1;
-			print_ldif_rename(
-				s, entry_dn(clean), entry_dn(modified),
-				deleteoldrdn);
-		}
-	} else if (modified)
-		print_ldif_add(s, entry_dn(modified), mods);
-	else if (clean)
-		print_ldif_delete(s, entry_dn(clean));
-	else
-		abort();
+	struct ldapmodify_context *ctx = userdata;
+	LDAP *ld = ctx->ld;
+	LDAPControl **ctrls = ctx->controls;
+	int verbose = ctx->verbose;
+	
+	char *dn2 = entry_dn(modified);
+	int deleteoldrdn = frob_rdn(modified, dn1, FROB_RDN_CHECK) == -1;
+	if (verbose) printf("(rename) %s to %s\n", dn1, dn2);
+	if (moddn(ld, dn1, dn2, deleteoldrdn, ctrls)) {
+		ldap_perror(ld, "ldap_rename");
+		return -1;
+	}
 	return 0;
 }
 
 static int
-vdif_handler(tentry *clean, tentry *modified, LDAPMod **mods, void *userdata)
+ldapmodify_add(char *dn, LDAPMod **mods, void *userdata)
+{
+	struct ldapmodify_context *ctx = userdata;
+	LDAP *ld = ctx->ld;
+	LDAPControl **ctrls = ctx->controls;
+	int verbose = ctx->verbose;
+	
+	if (verbose) printf("(add) %s\n", dn);
+	if (ldap_add_ext_s(ld, dn, mods, ctrls, 0)) {
+		ldap_perror(ld, "ldap_add");
+		return -1;
+	}
+	return 0;
+}
+
+static int
+ldapmodify_delete(char *dn, void *userdata)
+{
+	struct ldapmodify_context *ctx = userdata;
+	LDAP *ld = ctx->ld;
+	LDAPControl **ctrls = ctx->controls;
+	int verbose = ctx->verbose;
+	
+	if (verbose) printf("(delete) %s\n", dn);
+	switch (ldap_delete_ext_s(ld, dn, ctrls, 0)) {
+	case 0:
+		break;
+	case LDAP_NOT_ALLOWED_ON_NONLEAF:
+		if (!ctx->noquestions)
+			return -2;
+		/* else fall through */
+	default:
+		ldap_perror(ld, "ldap_delete");
+		return -1;
+	}
+	return 0;
+}
+
+static int
+ldapmodify_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+{
+	struct ldapmodify_context *ctx = userdata;
+	LDAP *ld = ctx->ld;
+	LDAPControl **ctrls = ctx->controls;
+	int verbose = ctx->verbose;
+
+	if (verbose) printf("(rename) %s to %s\n", dn1, dn2);
+	if (moddn(ld, dn1, dn2, deleteoldrdn, ctrls)) {
+		ldap_perror(ld, "ldap_rename");
+		return -1;
+	}
+	return 0;
+}
+
+static int
+ldif_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
 	FILE *s = userdata;
-	if (clean && modified) {
-		if (mods)
-			print_ldapvi_modify(s, entry_dn(modified), mods);
-		else {
-			char *dn1 = entry_dn(clean);
-			int deleteoldrdn =
-				frob_rdn(modified, dn1, FROB_RDN_CHECK) == -1;
-			print_ldapvi_rename(
-				s, entry_dn(clean), entry_dn(modified),
-				deleteoldrdn);
-		}
-	} else if (modified)
-		print_ldapvi_add(s, entry_dn(modified), mods);
-	else if (clean)
-		print_ldapvi_delete(s, entry_dn(clean));
-	else
-		abort();
+	print_ldif_modify(s, dn, mods);
+	return 0;
+}
+
+static int
+ldif_rename(char *olddn, tentry *modified, void *userdata)
+{
+	FILE *s = userdata;
+	int deleteoldrdn = frob_rdn(modified, olddn, FROB_RDN_CHECK) == -1;
+	print_ldif_rename(
+		s, olddn, entry_dn(modified),
+		deleteoldrdn);
+	return 0;
+}
+
+static int
+ldif_add(char *dn, LDAPMod **mods, void *userdata)
+{
+	FILE *s = userdata;
+	print_ldif_add(s, dn, mods);
+	return 0;
+}
+
+static int
+ldif_delete(char *dn, void *userdata)
+{
+	FILE *s = userdata;
+	print_ldif_delete(s, dn);
+	return 0;
+}
+
+static int
+ldif_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+{
+	FILE *s = userdata;
+	print_ldif_rename(s, dn1, dn2, deleteoldrdn);
+	return 0;
+}
+
+static thandler ldif_handler = {
+	ldif_change,
+	ldif_rename,
+	ldif_add,
+	ldif_delete,
+	ldif_rename0
+};
+
+static int
+vdif_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
+{
+	FILE *s = userdata;
+	print_ldapvi_modify(s, dn, mods);
+	return 0;
+}
+
+static int
+vdif_rename(char *olddn, tentry *modified, void *userdata)
+{
+	FILE *s = userdata;
+	int deleteoldrdn = frob_rdn(modified, olddn, FROB_RDN_CHECK) == -1;
+	print_ldapvi_rename(
+		s, olddn, entry_dn(modified),
+		deleteoldrdn);
+	return 0;
+}
+
+static int
+vdif_add(char *dn, LDAPMod **mods, void *userdata)
+{
+	FILE *s = userdata;
+	print_ldapvi_add(s, dn, mods);
+	return 0;
+}
+
+static int
+vdif_delete(char *dn, void *userdata)
+{
+	FILE *s = userdata;
+	print_ldapvi_delete(s, dn);
+	return 0;
+}
+
+static int
+vdif_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+{
+	FILE *s = userdata;
+	print_ldapvi_rename(s, dn1, dn2, deleteoldrdn);
 	return 0;
 }
 
@@ -228,22 +308,42 @@ struct statistics {
 };
 
 static int
-statistics_handler(tentry *clean, tentry *modified, LDAPMod **mods,
-		   void *userdata)
+statistics_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
 	struct statistics *st = userdata;
+	st->nmodify++;
+	return 0;
+}
 
-	if (clean && modified) {
-		if (mods)
-			st->nmodify++;
-		else
-			st->nrename++;
-	} else if (modified)
-		st->nadd++;
-	else if (clean)
-		st->ndelete++;
-	else
-		abort();
+static int
+statistics_rename(char *olddn, tentry *modified, void *userdata)
+{
+	struct statistics *st = userdata;
+	st->nrename++;
+	return 0;
+}
+
+static int
+statistics_add(char *dn, LDAPMod **mods, void *userdata)
+{
+	struct statistics *st = userdata;
+	st->nadd++;
+	return 0;
+}
+
+static int
+statistics_delete(char *dn, void *userdata)
+{
+	struct statistics *st = userdata;
+	st->ndelete++;
+	return 0;
+}
+
+static int
+statistics_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+{
+	struct statistics *st = userdata;
+	st->nrename++;
 	return 0;
 }
 
@@ -472,7 +572,7 @@ save_ldif(GArray *offsets, char *clean, char *data,
 	fputs(name->str, s);
 	fputs("\n", s);
 
-	compare(ldif_handler, s, offsets, clean, data, 0);
+	compare(&ldif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 
 	printf("Your changes have been saved to %s.\n", name->str);
@@ -486,7 +586,7 @@ view_ldif(char *dir, GArray *offsets, char *clean, char *data)
 	char *name = append(dir, "/ldif");
 	if ( !(s = fopen(name, "w"))) syserr();
 	fputs("version: 1\n", s);
-	compare(ldif_handler, s, offsets, clean, data, 0);
+	compare(&ldif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 	view(name);
 	free(name);
@@ -496,10 +596,18 @@ static void
 view_vdif(char *dir, GArray *offsets, char *clean, char *data)
 {
 	FILE *s;
+	static thandler vdif_handler = {
+		vdif_change,
+		vdif_rename,
+		vdif_add,
+		vdif_delete,
+		vdif_rename0
+	};
 	char *name = append(dir, "/vdif");
+
 	if ( !(s = fopen(name, "w"))) syserr();
 	fputs("version: ldapvi\n", s);
-	compare(vdif_handler, s, offsets, clean, data, 0);
+	compare(&vdif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 	view(name);
 	free(name);
@@ -531,12 +639,19 @@ static int
 analyze_changes(GArray *offsets, char *clean, char *data)
 {
 	struct statistics st;
+	static thandler statistics_handler = {
+		statistics_change,
+		statistics_rename,
+		statistics_add,
+		statistics_delete,
+		statistics_rename0
+	};
 	int rc;
 	long pos;
 
 retry:
 	memset(&st, 0, sizeof(st));
-	rc = compare(statistics_handler, &st, offsets, clean, data, &pos);
+	rc = compare(&statistics_handler, &st, offsets, clean, data, &pos);
 
 	/* Success? */
 	if (rc == 0) {
@@ -578,12 +693,19 @@ commit(LDAP *ld, GArray *offsets, char *clean, char *data, LDAPControl **ctrls,
        int verbose, int noquestions)
 {
 	struct ldapmodify_context ctx;
+	static thandler ldapmodify_handler = {
+		ldapmodify_change,
+		ldapmodify_rename,
+		ldapmodify_add,
+		ldapmodify_delete,
+		ldapmodify_rename0
+	};
 	ctx.ld = ld;
 	ctx.controls = ctrls;
 	ctx.verbose = verbose;
 	ctx.noquestions = noquestions;
 	
-	switch (compare(ldapmodify_handler, &ctx, offsets, clean, data, 0)) {
+	switch (compare(&ldapmodify_handler, &ctx, offsets, clean, data, 0)) {
 	case 0:
 		puts("Done.");
 		exit(0);
@@ -620,6 +742,14 @@ fixup_streams()
 	return target_stream;
 }
 
+static int
+ndecimalp(char *str)
+{
+	char *ptr;
+	strtol(str, &ptr, 10);
+	return !*ptr;
+}
+
 void
 skip(char *dataname, GArray *offsets)
 {
@@ -639,10 +769,7 @@ skip(char *dataname, GArray *offsets)
 		rename(tmpname, dataname);
 		free(tmpname);
 
-		/* remove entry from offsets table */
-		if (strcmp(key, "add")
-		    && strcmp(key, "rename")
-		    && strcmp(key, "modify"))
+		if (ndecimalp(key))
 			g_array_index(offsets, long, atoi(key)) = -1;
 		free(key);
 	} else {
@@ -658,7 +785,6 @@ skip(char *dataname, GArray *offsets)
                                 g_array_remove_index(offsets, n);
 				break;
 			}
-                if (fclose(s) == EOF) syserr();
 	}
 }
 
@@ -691,7 +817,7 @@ read_offsets(char *file)
 		key = 0;
 		if (read_entry(s, -1, &key, &entry, &offset) == -1) exit(1);
 		if (!key) break;
-		
+
 		n = strtol(key, &ptr, 10);
 		if (*ptr) {
 			fprintf(stderr, "Error: Invalid key: `%s'.\n", key);
@@ -714,7 +840,7 @@ static void
 offline_diff(char *a, char *b)
 {
 	GArray *offsets = read_offsets(a);
-	compare(ldif_handler, stdout, offsets, a, b, 0);
+	compare(&ldif_handler, stdout, offsets, a, b, 0);
 	g_array_free(offsets, 1);
 }
 

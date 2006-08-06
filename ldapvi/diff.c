@@ -354,6 +354,7 @@ more_deletions:
 
 /*
  * Die compare_streams-Schleife ist das Herz von ldapvi.
+ * XXX Und entsprechend lang isse geworden.  Aufraeumen!
  *
  * Read two ldapvi data files in streams CLEAN and DATA and compare them.
  *
@@ -367,33 +368,35 @@ more_deletions:
  * key is a number, the corresponding entry in CLEAN must exist, it is
  * read and compared to the modified copy.
  *
- * For each change, call handler with arguments described below.
- * Handlers must return 0 on success, or -1 on failure.  (As a special
- * case, return value -2 on a deletion indicates an attempt to delete a
- * non-leaf entry, which is non-fatal.)
+ * For each change, call the appropriate handler method with arguments
+ * described below.  Handler methods must return 0 on success, or -1 on
+ * failure.  (As a special case, return value -2 on a deletion indicates
+ * an attempt to delete a non-leaf entry, which is non-fatal.)
  *
  * For each new entry (labeled with "add"), call
- *   handler(NULL, new_entry, mods, USERDATA)
+ *   handler->add(dn, mods, USERDATA)
  * where MODS is a LDAPMod structure for the new entry.
  *
  * For each entry present in CLEAN but not DATA, call
- *   handler(removed_entry, 0, 0, USERDATA)
+ *   handler->delete(dn, USERDATA)
  * (This step can be repeated in the case of non-leaf entries.)
  *
  * For each entry present in both files, handler can be called two times.
  * If the distinguished names of the old and new entry disagree, call
- *   handler(old_entry, new_entry, 0, USERDATA)
+ *   handler->change(old_entry, new_entry, 0, USERDATA)
  * If there are additional changes to the attributes of the entry, call
- *   handler(renamed_entry, new_entry, mods, USERDATA)
+ *   handler->change(renamed_entry, new_entry, mods, USERDATA)
  * where RENAMED_ENTRY is a copy of the original entry, which accounts
  * for attribute modifications due to a possible RDN change (new RDN
  * component values have to be added, and old RDN values be removed),
  * and MODS describes the changes between RENAMED_ENTRY and NEW_ENTRY.
  *
- * Entries labeled "rename" or "delete" are changerecords for which the
- * handler is called as described above, except that the entry
- * structures are used only to specify the old and new DN and are
- * otherwise empty.
+ * Entries labeled "delete" are changerecords for which the handler is
+ * called as described above.
+ *
+ * Entries labeled "rename" are changerecords with their own method,
+ * called as:
+ *   handler->rename(olddn, newdn, deleteoldrdn, USERDATA)
  *
  * Return 0 on success, -1 on parse error, -2 on handler failure.
  *
@@ -401,7 +404,7 @@ more_deletions:
  * which the erroneous entry can be found.
  */
 int
-compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
+compare_streams(thandler *handler,
 		void *userdata,
 		GArray *offsets, FILE *clean, FILE *data,
 		long *error_position,
@@ -425,7 +428,7 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 
 		/* look at updated entry */
 		if (key) { free(key); key = 0; }
-		if (read_entry(data, -1, &key, 0, &datapos) == -1) goto cleanup;
+		if (peek_entry(data, -1, &key, &datapos) == -1) goto cleanup;
 		*error_position = datapos;
 		if (!key) break;
 
@@ -434,7 +437,8 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 			if (read_entry(data, datapos, 0, &entry, 0) == -1)
 				goto cleanup;
 			mods = entry2mods(entry);
-			if (handler(0, entry, mods, userdata) == -1) {
+			if (handler->add(
+				    entry_dn(entry), mods, userdata) == -1) {
 				ldap_mods_free(mods, 1);
 				rc = -2;
 				goto cleanup;
@@ -446,32 +450,29 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 		} else if (!strcmp(key, "rename")) {
 			char *dn1;
 			char *dn2;
-			if (read_rename(data, datapos, &dn1, &dn2) ==-1)
+			if (read_rename(
+				    data, datapos, &dn1, &dn2, &deleteoldrdn)
+			    == -1)
 				goto cleanup;
-			cleanentry = entry_new(dn1);
-			entry = entry_new(dn2);
-			if (handler(cleanentry, entry, 0, userdata) == -1) {
+			if (handler->rename0(dn1, dn2, deleteoldrdn, userdata)
+			    == -1)
+			{
+				free(dn1);
+				free(dn2);
 				rc = -2;
 				goto cleanup;
 			}
-			entry_free(cleanentry);
-			entry_free(entry);
-			cleanentry = entry = 0;
 			continue;
 		} else if (!strcmp(key, "modify")) {
 			char *dn;
 			if (read_modify(data, datapos, &dn, &mods) ==-1)
 				goto cleanup;
-			cleanentry = entry_new(dn);
-			entry = entry_new(xdup(dn));
-			if (handler(cleanentry, entry, mods, userdata) == -1) {
+			if (handler->change(dn, dn, mods, userdata) == -1) {
+				free(dn);
 				ldap_mods_free(mods, 1);
 				rc = -2;
 				goto cleanup;
 			}
-			entry_free(cleanentry);
-			entry_free(entry);
-			cleanentry = entry = 0;
 			continue;
 		}
 
@@ -515,7 +516,10 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 				rc = -1;
 				goto cleanup;
 			}
-			if (handler(cleanentry, entry, 0, userdata) == -1) {
+			if (handler->rename(
+				    entry_dn(cleanentry), entry, userdata)
+			    == -1) 
+			{
 				rc = -2;
 				goto cleanup;
 			}
@@ -523,7 +527,12 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 				cleanentry, entry_dn(entry), deleteoldrdn);
 		}
 		if ( (mods = compare_entries(cleanentry, entry))) {
-			if (handler(cleanentry, entry, mods, userdata) == -1) {
+			if (handler->change(entry_dn(cleanentry),
+					    entry_dn(entry),
+					    mods,
+					    userdata)
+			    == -1)
+			{
 				if (mods) ldap_mods_free(mods, 1);
 				if (rename)
 					update_clean_copy(offsets, key, clean, cleanentry);
@@ -556,7 +565,9 @@ compare_streams(int (*handler)(tentry *, tentry *, LDAPMod **, void *),
 				continue;
 			if (read_entry(clean, pos, 0, &cleanentry, 0) == -1)
 				abort();
-			switch (handler(cleanentry, 0, 0, userdata)) {
+			switch (handler->delete(
+					entry_dn(cleanentry), userdata))
+			{
 			case -1:
 				rc = -2;
 				goto cleanup;

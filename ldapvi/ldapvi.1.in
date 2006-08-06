@@ -34,7 +34,7 @@ ldapvi-record = ldapvi-attrval-record
 ldapvi-attrval-record = *(comment) dn-spec 1*(*(comment) attrval-spec)
 ldapvi-rename-record = *(comment)
                        "rename" distinguishedName SEP
-		       "dn" value-spec SEP
+		       ("add" / "replace") value-spec SEP
 ldapvi-modify-record = *(comment)
                        "modify" distinguishedName SEP
 		       1*(*(comment) mod-spec)

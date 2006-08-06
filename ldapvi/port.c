@@ -103,6 +103,9 @@ on_exit(void (*function)(int, void *), void *arg)
 }
 #endif
 
+void g_string_append_base64(
+	GString *string, unsigned char const *src, size_t srclength);
+
 int
 g_string_append_sha(GString *string, char *key)
 {

@@ -114,17 +114,32 @@ struct berval *gstring2berval(GString *s);
 /*
  * parse.c
  */
+int peek_entry(FILE *s, long offset, char **key, long *pos);
 int read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos);
-int read_rename(FILE *s, long offset, char **dn1, char **dn2);
+int read_rename(FILE *s, long offset, char **dn1, char **dn2, int *);
 int read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods);
 int skip_entry(FILE *s, long offset, char **key);
 
 /*
  * diff.c
  */
+typedef int (*handler_change)(char *, char *, LDAPMod **, void *);
+typedef int (*handler_rename)(char *, tentry *, void *);
+typedef int (*handler_add)(char *, LDAPMod **, void *);
+typedef int (*handler_delete)(char *, void *);
+typedef int (*handler_rename0)(char *, char *, int, void *);
+
+typedef struct thandler {
+	handler_change change;
+	handler_rename rename;
+	handler_add add;
+	handler_delete delete;
+	handler_rename0 rename0;
+} thandler;
+
 LDAPMod **compare_entries(tentry *eclean, tentry *enew);
 int compare_streams(
-	int (*handler)(tentry *, tentry *, LDAPMod **, void *),
+	thandler *handler,
 	void *userdata,
 	GArray *offsets,
 	FILE *clean,

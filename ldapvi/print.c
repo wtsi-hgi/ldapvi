@@ -96,13 +96,14 @@ print_ldapvi_ldapmod(FILE *s, LDAPMod *mod)
 {
 	struct berval **values = mod->mod_bvalues;
 
-	fputs(mod->mod_type, s);
 	switch (mod->mod_op & ~LDAP_MOD_BVALUES) {
-	case LDAP_MOD_ADD: fputs(": add\n", s); break;
-	case LDAP_MOD_DELETE: fputs(": delete\n", s); break;
-	case LDAP_MOD_REPLACE: fputs(": replace\n", s); break;
+	case LDAP_MOD_ADD: fputs("add", s); break;
+	case LDAP_MOD_DELETE: fputs("delete", s); break;
+	case LDAP_MOD_REPLACE: fputs("replace", s); break;
 	default: abort();
 	}
+	print_attrval(s, mod->mod_type, strlen(mod->mod_type));
+	fputc('\n', s);
 	for (; *values; values++) {
 		struct berval *value = *values;
 		print_attrval(s, value->bv_val, value->bv_len);
@@ -128,12 +129,9 @@ print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
 {
 	fputs("\nrename", s);
 	print_attrval(s, olddn, strlen(olddn));
-	fputs("\ndn", s);
+	fputs(deleteoldrdn ? "\nreplace" : "\nadd", s);
 	print_attrval(s, newdn, strlen(newdn));
-	/* FIXME: baeh, das ist doch nicht schoen.
-	 * in der manpage dokumentieren muss man es dann auch noch.
-	 */
-	fprintf(s, "\ndeleteoldrdn: %d\n", !!deleteoldrdn);
+	fputc('\n', s);
 	if (ferror(s)) syserr();
 }
 

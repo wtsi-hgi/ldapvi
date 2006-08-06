@@ -320,14 +320,20 @@ read_line(FILE *s, GString *name, GString *value)
 }
 
 static char *
-read_aux_rename(FILE *s, GString *tmp1, GString *tmp2)
+read_rename_body(FILE *s, GString *tmp1, GString *tmp2, int *deleteoldrdn)
 {
 	char *dn;
 	
 	if (read_line(s, tmp1, tmp2) == -1)
 		return 0;
-	if (!tmp1->len || strcmp(tmp1->str, "dn")) {
+	if (!tmp1->len) {
 		fputs("Error: Rename record lacks dn line.\n", stderr);
+		return 0;
+	}
+	*deleteoldrdn = !strcmp(tmp1->str, "replace");
+	if (!*deleteoldrdn && strcmp(tmp1->str, "add")) {
+		fputs("Error: Expected 'add' or 'replace' in rename record.\n",
+		      stderr);
 		return 0;
 	}
 	dn = xdup(tmp2->str);
@@ -344,7 +350,7 @@ read_aux_rename(FILE *s, GString *tmp1, GString *tmp2)
 }
 
 static LDAPMod *
-line2ldapmod(char *ad, char *action)
+ldapmod4line(char *action, char *ad)
 {
 	LDAPMod *m;
 	int op;
@@ -367,7 +373,7 @@ line2ldapmod(char *ad, char *action)
 }
 
 static LDAPMod **
-read_aux_modify(FILE *s, GString *tmp1, GString *tmp2)
+read_modify_body(FILE *s, GString *tmp1, GString *tmp2)
 {
 	LDAPMod **result;
 	GPtrArray *mods = g_ptr_array_new();
@@ -397,7 +403,7 @@ read_aux_modify(FILE *s, GString *tmp1, GString *tmp2)
 				g_ptr_array_free(values, 0);
 			}
 			values = g_ptr_array_new();
-			if ( !(m = line2ldapmod(tmp1->str, tmp2->str)))
+			if ( !(m = ldapmod4line(tmp1->str, tmp2->str)))
 				goto error;
 			g_ptr_array_add(mods, m);
 		} else
@@ -411,108 +417,199 @@ done:
 	return result;
 
 error:
-	/* fixme */
+	/* fixme: noch was? */
 	g_ptr_array_free(mods, 1);
 	return 0;
 }
 
-/* FIXME: memory management-frage: wenn ein fehler passiert und entry
- * angegeben wurde wird result nicht freigegeben.  ist das notwendig und
- * muss der aufrufer das also pruefen?  machen die das alle? */
+/*
+ * Lies die erste Zeile eines beliebigen Records nach position `offset' in `s'.
+ * Setze *pos (falls pos != 0).
+ * Liefere 0 bei Erfolg, -1 sonst.
+ * Bei Erfolg:
+ *   - pos ist die exakte Anfangsposition.
+ *   - Setze *key auf den Schluessel (falls key != 0).
+ *   - Setze *dn auf den Distinguished Name (falls dn != 0).
+ * EOF ist kein Fehler und liefert *key = 0 (falls key != 0);
+ */
 static int
-read_entry1(FILE *s, long offset, char **key, tentry **entry, long *pos,
-	    LDAPMod ***mods, char **entrydn, char **newdn)
+read_header(GString *tmp1, GString *tmp2,
+	    FILE *s, long offset, char **key, char **dn, long *pos)
 {
-	GString *name = g_string_new("");
-	GString *value = g_string_new("");
 	char **rdns = 0;
-	tentry *result = 0;
-	int rc = 0;
 
 	if (offset != -1)
 		if (fseek(s, offset, SEEK_SET) == -1) syserr();
 	do {
 		if (pos)
 			if ( (*pos = ftell(s)) == -1) syserr();
-		if (read_line(s, name, value) == -1) { rc = -1; goto cleanup; }
-		if (feof(s)) goto cleanup;
-	} while (!name->len);
+		if (read_line(s, tmp1, tmp2) == -1) return -1;
+		if (feof(s)) {
+			if (key) *key = 0;
+			return 0;
+		}
+	} while (!tmp1->len);
 
-	rdns = ldap_explode_dn(value->str, 0);
+	rdns = ldap_explode_dn(tmp2->str, 0);
 	if (!rdns) {
 		fputs("Error: Invalid distinguished name string.\n", stderr);
-		rc = -1;
-		goto cleanup;
+		return -1;
 	}
 
-	if (key)
-		*key = xdup(name->str);
-	if (!strcmp(name->str, "rename")) {
-		char *old = xdup(value->str);
-		char *dn;
-		if (!newdn) goto cleanup;
-		if ( !(dn = read_aux_rename(s, name, value))) {
-			free(old);
-			rc = -1;
-			goto cleanup;
-		}
-		*entrydn = old;
-		*newdn = dn;
-	} else if (!strcmp(name->str, "modify")) {
-		char *old = xdup(value->str);
-		LDAPMod **m;
-		if (!mods) goto cleanup;
-		if ( !(m = read_aux_modify(s, name, value))) {
-			free(old);
-			rc = -1;
-			goto cleanup;
-		}
-		*entrydn = old;
-		*mods = m;
-	} else {
-		if (!entry) goto cleanup;
-		result = entry_new(xdup(value->str));
-
-		for (;;) {
-			tattribute *attribute;
-		
-			if (read_line(s, name, value) == -1) {
-				rc = -1;
-				goto cleanup;
-			}
-			if (!name->len)
-				break;
-			attribute = entry_find_attribute(result, name->str, 1);
-			attribute_append_value(
-				attribute, value->str, value->len);
-		}
-	}
-	
-cleanup:
-	g_string_free(name, 1);
-	g_string_free(value, 1);
-	if (rdns) ldap_value_free(rdns);
-	if (entry)
-		*entry = result;
-	return rc;
+	if (key) *key = xdup(tmp1->str);
+	if (dn) *dn = xdup(tmp2->str);
+	ldap_value_free(rdns);
+	return 0;
 }
 
+static int
+read_attrval_body(GString *tmp1, GString *tmp2, FILE *s, tentry *entry)
+{
+	for (;;) {
+		tattribute *attribute;
+		
+		if (read_line(s, tmp1, tmp2) == -1)
+			return -1;
+		if (!tmp1->len)
+			break;
+		attribute = entry_find_attribute(entry, tmp1->str, 1);
+		attribute_append_value(attribute, tmp2->str, tmp2->len);
+	}
+	return 0;
+}
+
+/*
+ * Lies ein attrval-record nach position `offset' in `s'.
+ * Setze *pos (falls pos != 0).
+ * Liefere 0 bei Erfolg, -1 sonst.
+ * Bei Erfolg:
+ *   - pos ist die exakte Anfangsposition.
+ *   - Setze *entry auf den gelesenen Eintrag (falls entry != 0).
+ *   - Setze *key auf den Schluessel (falls key != 0).
+ * EOF ist kein Fehler und liefert *key = 0 (falls key != 0);
+ */
 int
 read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
 {
-	return read_entry1(s, offset, key, entry, pos, 0, 0, 0);
-}	
+	GString *tmp1 = g_string_new("");
+	GString *tmp2 = g_string_new("");
+	char *dn;
+	char *k = 0;
+	tentry *e = 0;
 
+	int rc = read_header(tmp1, tmp2, s, offset, &k, &dn, pos);
+	if (rc || !k) goto cleanup;
+
+	e = entry_new(dn);
+	rc = read_attrval_body(tmp1, tmp2, s, e);
+	if (!rc) {
+		if (entry) {
+			*entry = e;
+			e = 0;
+		}
+		if (key) {
+			*key = k;
+			k = 0;
+		}
+	}
+
+cleanup:
+	if (k) free(k);
+	if (e) entry_free(e);
+	g_string_free(tmp1, 1);
+	g_string_free(tmp2, 1);
+	return rc;
+}
+
+/*
+ * Lies die erste Zeile eines beliebigen Records nach position `offset' in `s'.
+ * Setze *pos (falls pos != 0).
+ * Liefere 0 bei Erfolg, -1 sonst.
+ * Bei Erfolg:
+ *   - pos ist die exakte Anfangsposition.
+ *   - Setze *key auf den Schluessel (falls key != 0).
+ */
 int
-read_rename(FILE *s, long offset, char **dn1, char **dn2)
+peek_entry(FILE *s, long offset, char **key, long *pos)
 {
-	return read_entry1(s, offset, 0, 0, 0, 0, dn1, dn2);
+	GString *tmp1 = g_string_new("");
+	GString *tmp2 = g_string_new("");
+
+	int rc = read_header(tmp1, tmp2, s, offset, key, 0, pos);
+	g_string_free(tmp1, 1);
+	g_string_free(tmp2, 1);
+	return rc;
 }	
 
+/*
+ * Lies ein rename-record nach position `offset' in `s'.
+ * Liefere 0 bei Erfolg, -1 sonst.
+ * Bei Erfolg:
+ *   - Setze *dn1 auf den alten DN.
+ *   - Setze *dn2 auf den neuen DN.
+ *   - *deleteoldrdn auf 1 oder 0;
+ */
+int
+read_rename(FILE *s, long offset, char **dn1, char **dn2, int *deleteoldrdn)
+{
+	GString *tmp1 = g_string_new("");
+	GString *tmp2 = g_string_new("");
+	char *olddn;
+	char *newdn;
+
+	int rc = read_header(tmp1, tmp2, s, offset, 0, &olddn, 0);
+	if (rc) {
+		g_string_free(tmp1, 1);
+		g_string_free(tmp2, 1);
+		return rc;
+	}
+
+	newdn = read_rename_body(s, tmp1, tmp2, deleteoldrdn);
+	g_string_free(tmp1, 1);
+	g_string_free(tmp2, 1);
+
+	if (!newdn) {
+		free(olddn);
+		return -1;
+	}
+	if (dn1) *dn1 = olddn; else free(olddn);
+	if (dn2) *dn2 = newdn; else free(newdn);
+	return 0;
+}	
+
+/*
+ * Lies ein modify-record nach position `offset' in `s'.
+ * Liefere 0 bei Erfolg, -1 sonst.
+ * Bei Erfolg:
+ *   - Setze *dn auf den DN.
+ *   - Setze *mods auf die Aenderungen.
+ */
 int
 read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
 {
-	return read_entry1(s, offset, 0, 0, 0, mods, dn, 0);
+	GString *tmp1 = g_string_new("");
+	GString *tmp2 = g_string_new("");
+	char *d;
+	LDAPMod **m;
+
+	int rc = read_header(tmp1, tmp2, s, offset, 0, &d, 0);
+	if (rc) {
+		g_string_free(tmp1, 1);
+		g_string_free(tmp2, 1);
+		return rc;
+	}
+
+	m = read_modify_body(s, tmp1, tmp2);
+	g_string_free(tmp1, 1);
+	g_string_free(tmp2, 1);
+
+	if (!m) {
+		free(d);
+		return -1;
+	}
+	if (dn) *dn = d; else free(d);
+	if (mods) *mods = m; else ldap_mods_free(m, 1);
+	return 0;
 }	
 
 /*
@@ -528,17 +625,34 @@ read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
 int
 skip_entry(FILE *s, long offset, char **key)
 {
-	tentry *entry;
-	LDAPMod **mods;
-	char *dn;
+	GString *tmp1 = g_string_new("");
+	GString *tmp2 = g_string_new("");
+	char *k = 0;
 
-	if (read_entry1(s, offset, key, &entry, 0, &mods, 0, &dn) == -1)
-		return -1;
-        if (!entry && !mods)
-		*key = 0;
+	int rc = read_header(tmp1, tmp2, s, offset, &k, 0, 0);
+	if (rc || !k)
+		;
+	else if (!strcmp(k, "modify")) {
+		LDAPMod **mods = read_modify_body(s, tmp1, tmp2);
+		if (mods)
+			ldap_mods_free(mods, 1);
+		else
+			rc = -1;
+	} else if (!strcmp(k, "rename")) {
+		int dor;
+		char *newdn = read_rename_body(s, tmp1, tmp2, &dor);
+		if (newdn)
+			free(newdn);
+		else
+			rc = -1;
+	} else {
+		tentry *e = entry_new(xdup(""));
+		rc = read_attrval_body(tmp1, tmp2, s, e);
+		entry_free(e);
+	}	
 
-	if (entry) entry_free(entry);
-	if (dn) free(dn);
-	if (mods) ldap_mods_free(mods, 1);
-	return 0;
-}	
+	if (key) *key = k; else free(k);
+	g_string_free(tmp1, 1);
+	g_string_free(tmp2, 1);
+	return rc;
+}
