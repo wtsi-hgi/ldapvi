@@ -39,6 +39,9 @@ AC_CHECK_HEADER([curses.h],,AC_MSG_ERROR([curses.h not found]))
 # popt
 AC_CHECK_LIB([popt],[poptGetContext],,AC_MSG_ERROR([libpopt not found]))
 
+# readline
+AC_CHECK_LIB([readline],[readline],,AC_MSG_ERROR([libreadline not found]))
+
 # pkg-config
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
 if test "x$PKG_CONFIG" = "xno"; then AC_MSG_ERROR([pkg-config not found]); fi

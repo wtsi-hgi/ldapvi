@@ -161,6 +161,8 @@ void cp(char *src, char *dst, off_t skip, int append);
 char choose(char *prompt, char *charbag, char *help);
 void edit(char *pathname, long pos);
 void view(char *pathname);
+void read_ldapvi_history(void);
+void write_ldapvi_history(void);
 GString *getline(char *prompt);
 char *get_password();
 char *append(char *a, char *b);

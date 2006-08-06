@@ -16,6 +16,7 @@ Prerequisites:
   - curses
   - GNU make
   - OpenSSL or GnuTLS, choose using ./configure --with-libcrypto
+  - readline
 
 Tested on:
   Linux, Solaris, FreeBSD, IRIX, Cygwin

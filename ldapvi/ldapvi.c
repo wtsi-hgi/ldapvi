@@ -1101,6 +1101,7 @@ main(int argc, const char **argv)
 
 	parse_arguments(argc, argv, &cmdline, ctrls);
 	target_stream = fixup_streams();
+	read_ldapvi_history();
 
 	ld = do_connect(cmdline.server,
 			cmdline.user,
@@ -1188,8 +1189,10 @@ main(int argc, const char **argv)
 				      cmdline.user,
 				      cmdline.managedsait))
 				break;
+			write_ldapvi_history();
 			return 0;
 		case 'Q':
+			write_ldapvi_history();
 			return 0;
 		case 'v':
 			view_ldif(dir, offsets, clean, data);

@@ -17,6 +17,8 @@
 #include <curses.h>
 #include <term.h>
 #include "common.h"
+#include <readline/readline.h>
+#include <readline/history.h>
 
 int
 carray_cmp(GArray *a, GArray *b)
@@ -176,8 +178,62 @@ view(char *pathname)
 		puts("pager died");
 }
 
+static char *
+history_filename()
+{
+	char *home = getenv("HOME");
+	int n;
+	char *result;
+
+	if (!home) {
+		fputs("Warning: You don't have a $HOME.\n", stderr);
+		return 0;
+	}
+
+	n = strlen(home);
+	result = xalloc(n + sizeof("/.ldapvi_history"));
+	strcpy(result, home);
+	strcpy(result + n, "/.ldapvi_history");
+	return result;
+}
+
+void
+read_ldapvi_history()
+{
+	char *filename = history_filename();
+	using_history();
+	if (!filename)
+		return;
+	if (read_history(filename) && errno != ENOENT)
+		perror("Oops, couldn't read history");
+	free(filename);
+}
+
+void
+write_ldapvi_history()
+{
+	char *filename = history_filename();
+	if (!filename)
+		return;
+	if (write_history(filename))
+		perror("Oops, couldn't write history");
+	free(filename);
+}
+
 GString *
 getline(char *prompt)
+{
+	GString *result = g_string_sized_new(8);
+	char *str = readline(prompt);
+	if (str && *str) {
+		add_history(str);
+		g_string_append(result, str);
+	}
+	return result;
+}
+
+static GString *
+trivial_getline(char *prompt)
 {
 	GString *result = g_string_sized_new(8);
 	int c;
@@ -201,7 +257,7 @@ get_password()
 	if (tcgetattr(0, &term) == -1) syserr();
 	term.c_lflag &= ~ECHO;
 	if (tcsetattr(0, TCSANOW, &term) == -1) syserr();
-	buf = getline("Password: ");
+	buf = trivial_getline("Password: ");
 	term.c_lflag |= ECHO;
 	if (tcsetattr(0, TCSANOW, &term) == -1) syserr();
 	putchar('\n');
