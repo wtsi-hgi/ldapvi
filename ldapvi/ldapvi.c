@@ -1144,6 +1144,8 @@ main(int argc, const char **argv)
 	data = append(dir, "/data");
 	
 	if ( !(s = fopen(data, "w"))) syserr();
+	if (print_binary_mode == PRINT_UTF8)
+		fputs("# -*- coding: utf-8 -*- vim:encoding=utf-8:\n", s);
 	fputs("# ldapvi(1)\n", s);
 	if (cmdline.add) {
 		if (cmdline.add->len) {

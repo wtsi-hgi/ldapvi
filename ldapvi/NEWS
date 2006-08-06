@@ -4,8 +4,9 @@
   - incompatible change: value encoding md5 renamed to cryptmd5
   - new value encodings md5, smd5, sha1, ssha1 (thanks to Michael Hanselmann)
   - new configure option --with-libcrypto
-work in progress:
-  - extended ldapvi syntax with change records
+  - extended ldapvi syntax with change records, new key 'V'
+  - UTF-8 support; new command line option --encoding
+  - fixed LDIF export to always Base64-encode non-ASCII values
 
 1.5 2005-12-11
   - fixed argument parsing (thanks to Andrea Barisani for the report)

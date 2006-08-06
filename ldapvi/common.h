@@ -171,9 +171,11 @@ void adjoin_str(GPtrArray *strs, char *str);
 /*
  * print.c
  */
-void write_backslashed(FILE *s, char *ptr, int n);
-int safe_string_p(char *str, int n);
-int readable_string_p(char *str, int n);
+typedef enum t_print_binary_mode {
+	PRINT_ASCII, PRINT_UTF8, PRINT_JUNK
+} t_print_binary_mode;
+extern t_print_binary_mode print_binary_mode;
+
 void print_attrval(FILE *s, char *str, int len);
 void print_entry_object(FILE *s, tentry *entry, char *key);
 void print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods);

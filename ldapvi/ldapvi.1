@@ -50,6 +50,9 @@ Auto\-detect naming contexts.              [2]
 \fB\-c\fR, \fB\-\-config\fR
 Print parameters in ldap.conf syntax.
 .TP
+\fB\-\-encoding\fR [ASCII|UTF\-8|binary]
+The encoding to allow.  Default is UTF\-8.
+.TP
 \fB\-M\fR, \fB\-\-managedsait\fR
 manageDsaIT control (critical).
 .TP
@@ -139,7 +142,7 @@ ldapvi-rename-record = *(comment)
 ldapvi-modify-record = *(comment)
                        "modify" distinguishedName SEP
 		       1*(*(comment) mod-spec)
-mod-spec = AttributeDescription (value-delete / value-add / value-replace) SEP
+mod-spec = ("delete" / "add" / "replace") ad-value SEP
 	   *(value-enc SEP)
 
 vspace = *(comment / sep)
@@ -174,9 +177,7 @@ escaped-string = *(unescaped-char / %x5c %x0a / %x5c %x0d / %x5c %x5c)
 password = 0*unescaped-char
 SEP = LF                                        ;this is a unix program!
 
-value-delete    = value-spec ;with effective value "delete"
-value-add       = value-spec ;with effective value "add"
-value-replace   = value-spec ;with effective value "replace"
+ad-value = value-spec  ;parsing as an AttributeDescription
 
 .SH BUGS
 Please report bugs to <ldapvi@lists.askja.de>.

@@ -41,6 +41,8 @@
 "  -a, --deref            never|searching|finding|always\n"		   \
 "  -d, --discover         Auto-detect naming contexts.              [2]\n" \
 "  -c, --config           Print parameters in ldap.conf syntax.\n"         \
+"      --encoding [ASCII|UTF-8|binary]\n"                                  \
+"                         The encoding to allow.  Default is UTF-8.\n"     \
 "  -M, --managedsait      manageDsaIT control (critical).\n"		   \
 "  -Z, --starttls         Require startTLS.\n"				   \
 "      --tls [never|allow|try|strict]  Level of TLS strictess.\n"          \
@@ -71,6 +73,7 @@
 "Report bugs to \"ldapvi@lists.askja.de\"."
 
 #define OPTION_TLS 1000
+#define OPTION_ENCODING 1001
 
 static struct poptOption options[] = {
 	{"host",	'h', POPT_ARG_STRING, 0, 'h', 0, 0},
@@ -84,6 +87,7 @@ static struct poptOption options[] = {
 	{"class",	'o', POPT_ARG_STRING, 0, 'o', 0, 0},
 	{"root",	'R', POPT_ARG_STRING, 0, 'R', 0, 0},
 	{"tls",		  0, POPT_ARG_STRING, 0, OPTION_TLS, 0, 0},
+	{"encoding",	  0, POPT_ARG_STRING, 0, OPTION_ENCODING, 0, 0},
 	{"add",		'A', 0, 0, 'A', 0, 0},
 	{"config",	'c', 0, 0, 'c', 0, 0},
 	{"discover",	'd', 0, 0, 'd', 0, 0},
@@ -202,6 +206,20 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 			else {
 				fprintf(stderr, "invalid tls level: %s\n",
                                         arg);
+				usage(2, 1);
+			}
+			break;
+		case OPTION_ENCODING:
+			if (!strcasecmp(arg, "ASCII"))
+				print_binary_mode = PRINT_ASCII;
+			else if (!strcasecmp(arg, "binary"))
+				print_binary_mode = PRINT_JUNK;
+			else if (!strcasecmp(arg, "UTF-8")
+				 || !strcasecmp(arg, "UTF_8")
+				 || !strcasecmp(arg, "UTF8"))
+				print_binary_mode = PRINT_UTF8;
+			else {
+				fprintf(stderr, "invalid encoding: %s\n", arg);
 				usage(2, 1);
 			}
 			break;

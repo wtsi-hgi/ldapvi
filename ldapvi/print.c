@@ -16,7 +16,9 @@
  */
 #include "common.h"
 
-void
+t_print_binary_mode print_binary_mode = PRINT_UTF8;
+
+static void
 write_backslashed(FILE *s, char *ptr, int n)
 {
 	int i;
@@ -27,13 +29,71 @@ write_backslashed(FILE *s, char *ptr, int n)
 	if (ferror(s)) syserr();
 }
 
-int
+static int
+utf8_string_p(unsigned char *str, int n)
+{
+	int i = 0;
+	while (i < n) {
+		unsigned char c = str[i++];
+		if (c >= 0xfe)
+			return 0;
+		if (c >= 0xfc) {
+			unsigned char d;
+			if ((n - i < 5)
+			    || ((d=str[i++]) ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (c < 0xfd && d < 0x84))
+				return 0;
+		} else if (c >= 0xf8) {
+			unsigned char d;
+			if ((n - i < 4)
+			    || ((d=str[i++]) ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (c < 0xf9 && d < 0x88))
+				return 0;
+		} else if (c >= 0xf0) {
+			unsigned char d;
+			if ((n - i < 3)
+			    || ((d=str[i++]) ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (str[i++] ^ 0x80) >= 0x40
+			    || (c < 0xf1 && d < 0x90))
+				return 0;
+		} else if (c >= 0xe0) {
+			unsigned char d, e;
+			unsigned code;
+			if ((n - i < 2)
+			    || ((d=str[i++]) ^ 0x80) >= 0x40
+			    || ((e=str[i++]) ^ 0x80) >= 0x40
+			    || (c < 0xe1 && d < 0xa0))
+				return 0;
+			code = ((int) c & 0x0f) << 12
+				| ((int) d ^ 0x80) << 6
+				| ((int) e ^ 0x80);
+			if ((0xd800 <= code) && (code <= 0xdfff)
+			    || code == 0xfffe || code == 0xffff)
+				return 0;
+		} else if (c >= 0x80) {
+			unsigned char d;
+			if ((n - i < 1)
+			    || ((d=str[i++]) ^ 0x80) >= 0x40
+			    || (c < 0xc2))
+				return 0;
+		} else if (c == 0)
+			return 0;
+	}
+	return 1;
+}
+
+static int
 readable_string_p(char *str, int n)
 {
 	int i;
-	/* XXX we could do something more fancy here.  Checking for UTF-8
-	 * might make sense, so that you can use a UTF-8 capable editor
-	 * in the presence of binary data. */
 	for (i = 0; i < n; i++) {
 		char c = str[i];
 		if (c < 32 && c != '\n' && c != '\t')
@@ -42,10 +102,45 @@ readable_string_p(char *str, int n)
 	return 1;
 }
 
+static int
+safe_string_p(char *str, int n)
+{
+	unsigned char c;
+	int i;
+
+	if (n == 0) return 1;
+		
+	c = str[0];
+	if ((c == ' ') || (c == ':') || (c == '<'))
+		return 0;
+	
+	for (i = 0; i < n; i++) {
+		c = str[i];
+		if ((c == '\0') || (c == '\r') || (c == '\n') || (c >= 0x80))
+			return 0;
+	}
+	return 1;
+}
+
 void
 print_attrval(FILE *s, char *str, int len)
 {
-	if (!readable_string_p(str, len)) {
+	int readablep;
+	switch (print_binary_mode) {
+	case PRINT_ASCII:
+		readablep = readable_string_p(str, len);
+		break;
+	case PRINT_UTF8:
+		readablep = utf8_string_p((unsigned char *) str, len);
+		break;
+	case PRINT_JUNK:
+		readablep = 1;
+		break;
+	default:
+		abort();
+	}
+
+	if (!readablep) {
 		fputs(":: ", s);
 		print_base64((unsigned char *) str, len, s);
 	} else if (!safe_string_p(str, len)) {
@@ -162,26 +257,6 @@ print_ldapvi_delete(FILE *s, char *dn)
 	print_attrval(s, dn, strlen(dn));
 	fputc('\n', s);
 	if (ferror(s)) syserr();
-}
-
-int
-safe_string_p(char *str, int n)
-{
-	int safe = 1;
-	char c;
-	int i;
-
-	if (n == 0) return 1;
-		
-	c = str[0];
-	safe = (c != ' ') && (c != ':') && (c != '<');
-	
-	for (i = 0; i < n; i++) {
-		c = str[i];
-		if ((c == '\0') || (c == '\r') || (c == '\n'))
-			safe = 0;
-	}
-	return safe;
 }
 
 static void
