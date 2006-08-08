@@ -23,8 +23,9 @@ write_backslashed(FILE *s, char *ptr, int n)
 {
 	int i;
 	for (i = 0; i < n; i++) {
-		if (ptr[i] == '\n') fputc('\\', s);
-		fputc(ptr[i], s);
+		char c = ptr[i];
+		if (c == '\n' || c == '\\') fputc('\\', s);
+		fputc(c, s);
 	}
 	if (ferror(s)) syserr();
 }

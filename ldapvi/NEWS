@@ -8,6 +8,7 @@
   - UTF-8 support; new command line option --encoding
   - fixed LDIF export to always Base64-encode non-ASCII values
   - use libreadline to read the user name
+  - oops: escape backslashes properly
 
 1.5 2005-12-11
   - fixed argument parsing (thanks to Andrea Barisani for the report)
