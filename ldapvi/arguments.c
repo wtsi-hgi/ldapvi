@@ -260,6 +260,21 @@ parse_profile_line(tattribute *attribute, cmdline *result, GPtrArray *ctrls)
 	int i;
 	struct poptOption *o = 0;
 
+	if (!strcmp(name, "filter")) {
+		int last = values->len - 1;
+		result->filter = array2string(g_ptr_array_index(values, last));
+		return;
+	}
+	if (!strcmp(name, "ad")) {
+		int n = values->len;
+		char **attrs = xalloc((n + 1) * sizeof(char *));
+		for (i = 0; i < n; i++)
+			attrs[i] = array2string(g_ptr_array_index(values, i));
+		attrs[n] = 0;
+		result->attrs = attrs;
+		return;
+	}
+
 	for (i = 0; options[i].longName; i++)
 		if (!strcmp(name, options[i].longName)) {
 			o = &options[i];
