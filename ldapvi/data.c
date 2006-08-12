@@ -162,6 +162,20 @@ attribute_remove_value(tattribute *a, char *data, int n)
 }
 
 /*
+ * Aus irgendwelchen Gruenden habe ich mal beschlossen, GArrays mit chars drin
+ * statt GStrings zu nehmen fuer die Attributwerte.  Wie unpraktisch.
+ */
+char *
+array2string(GArray *av)
+{
+	int n = av->len;
+	char *str = xalloc(n + 1);
+	memcpy(str, av->data, n);
+	str[n] = 0;
+	return str;
+}
+
+/*
  * allocate a new berval and copy LEN bytes of DATA into it
  */
 static struct berval *

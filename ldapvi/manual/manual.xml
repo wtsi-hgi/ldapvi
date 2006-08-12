@@ -375,6 +375,10 @@ wofuer was das doch gleich da?
 	  The option can be repeated to include
 	  additional, <i>auxiliary</i> classes.
 	</p>
+	<p>
+	  A distinguished name for the entry template can be specified
+	  using <a href="#parameter-base"><tt>--base</tt></a>.
+	</p>
       </parameter>
     </section>
 

@@ -110,6 +110,7 @@ int attribute_remove_value(tattribute *a, char *data, int n);
 
 struct berval *string2berval(GArray *s);
 struct berval *gstring2berval(GString *s);
+char *array2string(GArray *av);
 
 /*
  * parse.c
@@ -119,6 +120,7 @@ int read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos);
 int read_rename(FILE *s, long offset, char **dn1, char **dn2, int *);
 int read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods);
 int skip_entry(FILE *s, long offset, char **key);
+int read_profile(FILE *s, tentry **entry);
 
 /*
  * diff.c
@@ -161,6 +163,7 @@ void cp(char *src, char *dst, off_t skip, int append);
 char choose(char *prompt, char *charbag, char *help);
 void edit(char *pathname, long pos);
 void view(char *pathname);
+char *home_filename(char *name);
 void read_ldapvi_history(void);
 void write_ldapvi_history(void);
 GString *getline(char *prompt);

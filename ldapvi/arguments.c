@@ -88,6 +88,7 @@ static struct poptOption options[] = {
 	{"root",	'R', POPT_ARG_STRING, 0, 'R', 0, 0},
 	{"tls",		  0, POPT_ARG_STRING, 0, OPTION_TLS, 0, 0},
 	{"encoding",	  0, POPT_ARG_STRING, 0, OPTION_ENCODING, 0, 0},
+	{"profile",	'p', POPT_ARG_STRING, 0, 'p', 0, 0},
 	{"add",		'A', 0, 0, 'A', 0, 0},
 	{"config",	'c', 0, 0, 'c', 0, 0},
 	{"discover",	'd', 0, 0, 'd', 0, 0},
@@ -110,151 +111,279 @@ usage(int fd, int rc)
 	if (rc != -1) exit(rc);
 }
 
+static void
+parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
+{
+	LDAPControl *control;
+
+	switch (c) {
+	case 'H':
+		usage(-1, 0);
+	case 'h':
+		result->server = arg;
+		break;
+	case 's':
+		if (!strcmp(arg, "base"))
+			result->scope = LDAP_SCOPE_BASE;
+		else if (!strcmp(arg, "one"))
+			result->scope = LDAP_SCOPE_ONELEVEL;
+		else if (!strcmp(arg, "sub"))
+			result->scope = LDAP_SCOPE_SUBTREE;
+		else {
+			fprintf(stderr, "invalid scope: %s\n", arg);
+			usage(2, 1);
+		}
+		break;
+	case 'b':
+		g_ptr_array_add(result->basedns, arg);
+		break;
+	case 'D':
+		result->user = arg;
+		break;
+	case 'w':
+		result->password = arg;
+		break;
+	case 'd':
+		result->discover = 1;
+		break;
+	case 'c':
+		result->config = 1;
+		break;
+	case 'q':
+		result->progress = 0;
+		break;
+	case 'A':
+		if (!result->add)
+			result->add = g_ptr_array_new();
+		break;
+	case 'o':
+		if (!result->add)
+			result->add = g_ptr_array_new();
+		adjoin_str(result->add, arg);
+		break;
+	case 'C':
+		if (!strcasecmp(arg, "yes"))
+			result->referrals = 1;
+		else if (!strcasecmp(arg, "no"))
+			result->referrals = 0;
+		else {
+			fprintf(stderr, "--chase invalid%s\n", arg);
+			usage(2, 1);
+		}
+		break;
+	case 'M':
+		result->managedsait = 1;
+		control = malloc(sizeof(LDAPControl));
+		control->ldctl_oid = LDAP_CONTROL_MANAGEDSAIT;
+		control->ldctl_value.bv_len = 0;
+		control->ldctl_value.bv_val = 0;
+		control->ldctl_iscritical = 1;
+		g_ptr_array_add(ctrls, control);
+		break;
+	case 'V':
+		puts("ldapvi " VERSION);
+		exit(0);
+	case 'S':
+		result->sortkeys = arg;
+		break;
+	case 'Z':
+		result->starttls = 1;
+		break;
+	case OPTION_TLS:
+		if (!strcmp(arg, "never"))
+			result->tls = LDAP_OPT_X_TLS_NEVER;
+		else if (!strcmp(arg, "allow"))
+			result->tls = LDAP_OPT_X_TLS_ALLOW;
+		else if (!strcmp(arg, "try"))
+			result->tls = LDAP_OPT_X_TLS_TRY;
+		else if (!strcmp(arg, "strict"))
+			result->tls = LDAP_OPT_X_TLS_HARD;
+		else {
+			fprintf(stderr, "invalid tls level: %s\n",
+				arg);
+			usage(2, 1);
+		}
+		break;
+	case OPTION_ENCODING:
+		if (!strcasecmp(arg, "ASCII"))
+			print_binary_mode = PRINT_ASCII;
+		else if (!strcasecmp(arg, "binary"))
+			print_binary_mode = PRINT_JUNK;
+		else if (!strcasecmp(arg, "UTF-8")
+			 || !strcasecmp(arg, "UTF_8")
+			 || !strcasecmp(arg, "UTF8"))
+			print_binary_mode = PRINT_UTF8;
+		else {
+			fprintf(stderr, "invalid encoding: %s\n", arg);
+			usage(2, 1);
+		}
+		break;
+	case 'R':
+		g_ptr_array_add(result->basedns, arg);
+		result->scope = LDAP_SCOPE_BASE;
+		result->filter = "(objectclass=*)";
+		{
+			static char *attrs[3] = {"+", "*", 0};
+			result->attrs = attrs;
+		}
+		break;
+	case 'a':
+		if (!strcasecmp(arg, "never"))
+			result->deref = LDAP_DEREF_NEVER;
+		else if (!strcasecmp(arg, "searching"))
+			result->deref = LDAP_DEREF_SEARCHING;
+		else if (!strcasecmp(arg, "finding"))
+			result->deref = LDAP_DEREF_FINDING;
+		else if (!strcasecmp(arg, "always"))
+			result->deref = LDAP_DEREF_ALWAYS;
+		else {
+			fprintf(stderr, "--deref invalid%s\n", arg);
+			usage(2, 1);
+		}
+		break;
+	case 'v':
+		result->verbose = 1;
+		break;
+	case '!':
+		result->noquestions = 1;
+		break;
+	default:
+		abort();
+	}
+}
+
+static void
+parse_profile_line(tattribute *attribute, cmdline *result, GPtrArray *ctrls)
+{
+	char *name = attribute_ad(attribute);
+	GPtrArray *values = attribute_values(attribute);
+	int i;
+	struct poptOption *o = 0;
+
+	for (i = 0; options[i].longName; i++)
+		if (!strcmp(name, options[i].longName)) {
+			o = &options[i];
+			break;
+		}
+	if (!o) {
+		fprintf(stderr, "Error: unknown configuration option: '%s'\n",
+			name);
+		exit(1);
+	}
+
+	for (i = 0; i < values->len; i++) {
+		char *value = array2string(g_ptr_array_index(values, i));
+		if (o->argInfo == 0)
+			if (!strcmp(value, "no"))
+				continue;
+			else if (strcmp(value, "yes")) {
+				fprintf(stderr,
+					"invalid value '%s' to configuration"
+					" option '%s', expected 'yes' or"
+					" 'no'.\n",
+					value,
+					name);
+				exit(1);
+			}
+		parse_argument(o->val, value, result, ctrls);
+	}
+}
+
+static void
+parse_configuration(char *profile_name, cmdline *result, GPtrArray *ctrls)
+{
+	struct stat st;
+	char *profile_requested = profile_name;
+	char *filename = home_filename(".ldapvirc");
+	FILE *s;
+	tentry *p;
+	tentry *profile_found = 0;
+	int duplicate = 0;
+
+	if (!profile_name)
+		profile_name = "default";
+
+	if (!filename || stat(filename, &st)) {
+		filename = "/etc/ldapvi.conf";
+		if (stat(filename, &st))
+			filename = 0;
+	}
+	if (!filename) {
+		if (profile_requested) {
+			fputs("Error: ldapvi configuration file not found.\n",
+			      stderr);
+			exit(1);
+		}
+		return;
+	}
+
+	if ( !(s = fopen(filename, "r"))) syserr();
+	for (;;) {
+		p = 0;
+		if (read_profile(s, &p)) {
+			fputs("Error in configuration file, giving up.\n",
+			      stderr);
+			exit(1);
+		}
+		if (!p)
+			break;
+		if (strcmp(entry_dn(p), profile_name)) 
+			entry_free(p);
+		else if (profile_found)
+			duplicate = 1;
+		else
+			profile_found = p;
+	}
+	if (duplicate) {
+		fprintf(stderr,
+			"Error: Duplicate configuration profile '%s'.\n",
+			profile_name);
+		exit(1);
+	}
+	if (profile_found) {
+		GPtrArray *attributes = entry_attributes(profile_found);
+		int i;
+		for (i = 0; i < attributes->len; i++) {
+			tattribute *a = g_ptr_array_index(attributes, i);
+			parse_profile_line(a, result, ctrls);
+		}
+		entry_free(profile_found);
+		if (setenv("LDAPNOINIT", "thanks", 1)) syserr();
+	} else if (profile_requested) {
+		fprintf(stderr,
+			"Error: Configuration profile not found: '%s'.\n",
+			profile_name);
+		exit(1);
+	}
+	if (fclose(s) == EOF) syserr();
+}
+
 void
 parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 {
 	int c;
 	poptContext ctx;
-	LDAPControl *control;
+	char *profile = 0;
 
 	ctx = poptGetContext(
 		0, argc, argv, options, POPT_CONTEXT_POSIXMEHARDER);
+
 	while ( (c = poptGetNextOpt(ctx)) > 0) {
 		char *arg = (char *) poptGetOptArg(ctx);
-		switch (c) {
-		case 'H':
-			usage(-1, 0);
-		case 'h':
-			result->server = arg;
-			break;
-		case 's':
-			if (!strcmp(arg, "base"))
-				result->scope = LDAP_SCOPE_BASE;
-			else if (!strcmp(arg, "one"))
-				result->scope = LDAP_SCOPE_ONELEVEL;
-			else if (!strcmp(arg, "sub"))
-				result->scope = LDAP_SCOPE_SUBTREE;
-			else {
-				fprintf(stderr, "invalid scope: %s\n", arg);
-				usage(2, 1);
-			}
-			break;
-		case 'b':
-			g_ptr_array_add(result->basedns, arg);
-			break;
-		case 'D':
-			result->user = arg;
-			break;
-		case 'w':
-			result->password = arg;
-			break;
-		case 'd':
-			result->discover = 1;
-			break;
-		case 'c':
-			result->config = 1;
-			break;
-		case 'q':
-			result->progress = 0;
-			break;
-		case 'A':
-			if (!result->add)
-				result->add = g_ptr_array_new();
-			break;
-		case 'o':
-			if (!result->add)
-				result->add = g_ptr_array_new();
-			adjoin_str(result->add, arg);
-			break;
-		case 'C':
-			if (!strcasecmp(arg, "yes"))
-				result->referrals = 1;
-			else if (!strcasecmp(arg, "no"))
-				result->referrals = 0;
-			else {
-				fprintf(stderr, "--chase invalid%s\n", arg);
-				usage(2, 1);
-			}
-			break;
-		case 'M':
-			result->managedsait = 1;
-			control = malloc(sizeof(LDAPControl));
-			control->ldctl_oid = LDAP_CONTROL_MANAGEDSAIT;
-			control->ldctl_value.bv_len = 0;
-			control->ldctl_value.bv_val = 0;
-			control->ldctl_iscritical = 1;
-			g_ptr_array_add(ctrls, control);
-			break;
-		case 'V':
-			puts("ldapvi " VERSION);
-			exit(0);
-		case 'S':
-			result->sortkeys = arg;
-			break;
-		case 'Z':
-			result->starttls = 1;
-			break;
-		case OPTION_TLS:
-			if (!strcmp(arg, "never"))
-				result->tls = LDAP_OPT_X_TLS_NEVER;
-			else if (!strcmp(arg, "allow"))
-				result->tls = LDAP_OPT_X_TLS_ALLOW;
-			else if (!strcmp(arg, "try"))
-				result->tls = LDAP_OPT_X_TLS_TRY;
-			else if (!strcmp(arg, "strict"))
-				result->tls = LDAP_OPT_X_TLS_HARD;
-			else {
-				fprintf(stderr, "invalid tls level: %s\n",
-                                        arg);
-				usage(2, 1);
-			}
-			break;
-		case OPTION_ENCODING:
-			if (!strcasecmp(arg, "ASCII"))
-				print_binary_mode = PRINT_ASCII;
-			else if (!strcasecmp(arg, "binary"))
-				print_binary_mode = PRINT_JUNK;
-			else if (!strcasecmp(arg, "UTF-8")
-				 || !strcasecmp(arg, "UTF_8")
-				 || !strcasecmp(arg, "UTF8"))
-				print_binary_mode = PRINT_UTF8;
-			else {
-				fprintf(stderr, "invalid encoding: %s\n", arg);
-				usage(2, 1);
-			}
-			break;
-		case 'R':
-			g_ptr_array_add(result->basedns, arg);
-			result->scope = LDAP_SCOPE_BASE;
-			result->filter = "(objectclass=*)";
-			{
-				static char *attrs[3] = {"+", "*", 0};
-				result->attrs = attrs;
-			}
-			break;
-		case 'a':
-			if (!strcasecmp(arg, "never"))
-				result->deref = LDAP_DEREF_NEVER;
-			else if (!strcasecmp(arg, "searching"))
-				result->deref = LDAP_DEREF_SEARCHING;
-			else if (!strcasecmp(arg, "finding"))
-				result->deref = LDAP_DEREF_FINDING;
-			else if (!strcasecmp(arg, "always"))
-				result->deref = LDAP_DEREF_ALWAYS;
-			else {
-				fprintf(stderr, "--deref invalid%s\n", arg);
-				usage(2, 1);
-			}
-			break;
-		case 'v':
-			result->verbose = 1;
-			break;
-		case '!':
-			result->noquestions = 1;
-			break;
-		default:
-			abort();
+		if (c != 'p') continue;
+		if (profile) {
+			fputs("Multiple profile options given.\n", stderr);
+			usage(2, 1);
 		}
+		profile = arg;
+	}
+	parse_configuration(profile, result, ctrls);
+
+	poptResetContext(ctx);
+	while ( (c = poptGetNextOpt(ctx)) > 0) {
+		char *arg = (char *) poptGetOptArg(ctx);
+		if (c != 'p')
+			parse_argument(c, arg, result, ctrls);
 	}
 	if (c != -1) {
 		fprintf(stderr, "%s: %s\n",

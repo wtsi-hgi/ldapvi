@@ -444,7 +444,7 @@ read_header(GString *tmp1, GString *tmp2,
 		if (pos)
 			if ( (*pos = ftell(s)) == -1) syserr();
 		if (read_line(s, tmp1, tmp2) == -1) return -1;
-		if (feof(s)) {
+		if (tmp1->len == 0 && feof(s)) {
 			if (key) *key = 0;
 			return 0;
 		}
@@ -652,6 +652,54 @@ skip_entry(FILE *s, long offset, char **key)
 	}	
 
 	if (key) *key = k; else free(k);
+	g_string_free(tmp1, 1);
+	g_string_free(tmp2, 1);
+	return rc;
+}
+
+static int
+read_profile_header(GString *tmp1, GString *tmp2, FILE *s, char **name)
+{
+	do {
+		if (read_line(s, tmp1, tmp2) == -1) return -1;
+		if (tmp1->len == 0 && feof(s)) {
+			*name = 0;
+			return 0;
+		}
+	} while (!tmp1->len);
+
+	if (strcmp(tmp1->str, "profile")) {
+		fprintf(stderr,
+			"Error: Expected 'profile' in configuration,"
+			" found '%s' instead.\n",
+			tmp1->str);
+		return -1;
+	}
+
+	*name = xdup(tmp2->str);
+	return 0;
+}
+
+int
+read_profile(FILE *s, tentry **entry)
+{
+	GString *tmp1 = g_string_new("");
+	GString *tmp2 = g_string_new("");
+	char *name;
+	tentry *e = 0;
+
+	int rc = read_profile_header(tmp1, tmp2, s, &name);
+	if (rc || !name) goto cleanup;
+
+	e = entry_new(name);
+	rc = read_attrval_body(tmp1, tmp2, s, e);
+	if (!rc) {
+		*entry = e;
+		e = 0;
+	}
+
+cleanup:
+	if (e) entry_free(e);
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 	return rc;

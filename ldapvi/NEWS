@@ -10,6 +10,9 @@
   - use libreadline to read the user name
   - oops: escape backslashes properly
   - new documentation in manual/manual.xml
+  - support for configuration files ~/.ldapvirc or /etc/ldapvi.conf in
+    ldapvi syntax, taking precedence over .ldaprc and /etc/ldap.conf if
+    present.  (And new command line argument --profile.)
 
 1.5 2005-12-11
   - fixed argument parsing (thanks to Andrea Barisani for the report)

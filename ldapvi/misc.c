@@ -178,8 +178,8 @@ view(char *pathname)
 		puts("pager died");
 }
 
-static char *
-history_filename()
+char *
+home_filename(char *name)
 {
 	char *home = getenv("HOME");
 	int n;
@@ -191,10 +191,18 @@ history_filename()
 	}
 
 	n = strlen(home);
-	result = xalloc(n + sizeof("/.ldapvi_history"));
+	result = xalloc(n + 1 + strlen(name));
 	strcpy(result, home);
-	strcpy(result + n, "/.ldapvi_history");
+	result[n] = '/';
+	strcpy(result + n + 1, name);
 	return result;
+}
+
+
+static char *
+history_filename()
+{
+	return home_filename(".ldapvi_history");
 }
 
 void
