@@ -1,0 +1,936 @@
+<?xml-stylesheet type="text/xsl" href="html.xsl"?>
+<manual title="ldapvi User Manual" style="manual.css">
+  <intro>
+    <p>
+      <tt>ldapvi</tt> is an interactive LDAP client for Unix terminals.
+      Using it, you can update LDAP entries with a text editor.
+    </p>
+    <p>
+      Think of it as <tt>vipw</tt>(1) for LDAP.
+    </p>
+    <p>
+      ldapvi was written by David Lichteblau and is available
+      at <link>http://www.lichteblau.com/ldapvi.html</link>.
+    </p>
+  </intro>
+
+  <chapter name="installing" title="Installing ldapvi">
+    <p>
+      ldapvi uses autoconf and should be rather easy to install.
+    </p>
+    <p>
+      It used to work on Linux, Solaris, FreeBSD, IRIX, and Cygwin for
+      me and seems to work on MacOS X and NetBSD for others.  Current
+      versions are only really tested on Linux though, so please
+      send a bug report if a port is broken.
+    </p>
+    <code>$ ./configure &amp;&amp; make
+# make install</code>
+    <p title="Prerequisites">
+      <ul>
+	<li>
+	  Recent OpenLDAP client library (>= 2.2 preferred, 2.1 tolerated)
+	</li>
+	<li>glib-2.0</li>
+	<li>popt</li>
+	<li>curses</li>
+	<li>GNU make</li>
+	<li>
+	  OpenSSL or GnuTLS, choose using
+	  <tt>./configure --with-libcrypto</tt>
+	</li>
+	<li>readline</li>
+      </ul>
+    </p>
+    <p>
+      Note that binaries compiled for libldap 2.1 will crash when ran
+      with libldap 2.2.
+<!--
+    Blame OpenLDAP for changing their API
+      incompatibly (or praise them for fixing what was indeed terrible;
+      your choice).
+  -->
+    </p>
+    <p>
+      The choice of GnuTLS over OpenSSL affects only the use of hashing
+      routines for the <tt>userPassword</tt> convenience encodings md5,
+      smd5, sha, and ssha.  GnuTLS support is offered because, according
+      to Debian, OpenSSL is not GPL compatible.
+    </p>
+  </chapter>
+
+  <chapter name="gettingstarted" title="Getting started">
+    <p>
+      The quickest way to try ldapvi is using this:
+    </p>
+    <code>$ ldapvi -d --host HOSTNAME</code>
+
+    <p title="Explanation">
+      This will bind anonymously to <tt>hostname</tt>, read all entries
+      the server has and open them in the editor.
+    </p>
+    <p>
+      <tt>--host</tt> is the one option you really need to give.  It can
+      be one of:
+    </p>
+    <ul>
+      <li>A domain name.</li>
+      <li><tt>ldap://hostname[:port]</tt></li>
+      <li><tt>ldaps://hostname[:port]</tt></li>
+    </ul>
+    <p>
+      <tt>-d</tt> is short for <tt>--discover</tt> and lets ldapvi
+      search all of the server's naming contexts.  Without <tt>-d</tt>,
+      you would have had to specify the base DN yourself
+      using <tt>--base</tt>, and you know how inconvenient those LDAP
+      DNs are to type.
+    </p>
+
+    <p title="Using a configuration file">
+      As easy as that was, you might want to put the hostname and other
+      search options like the precise base DN to use into a
+      configuration file.
+    </p>
+    <p>
+      To do that, you might like 
+    </p>
+    <code>$ ldapvi -c -d --host HOSTNAME</code>
+    <p>
+      This will ask the server for its naming contexts and print
+      something like this:
+    </p>
+    <code><i># ldap.conf(5)
+# edit this as needed and paste into ~/.ldaprc
+
+# server name
+# (for parameterless operation, make sure to include at least this line)</i>
+<b>HOST localhost</b>
+
+<i># default search base
+### multiple namingcontexts found (uncomment one of these lines):</i>
+<b>#BASE dc=lichteblau,dc=com
+#BASE dc=acme,dc=com</b>
+
+<i># user to bind as</i>
+<b>#BINDDN &lt;dn&gt;</b>
+
+<i># search parameters (uncomment as needed)</i>
+<b>#DEREF never
+#SIZELIMIT 0
+#TIMELIMIT 0</b></code>
+    <p>
+      Adjust to taste.
+    </p>
+  </chapter>
+
+  <chapter name="interactive" title="Interactive usage">
+    <p>
+      After quitting from the editor, one of three things can happen:
+    </p>
+    <ul>
+      <li>
+	If ldapvi detects that nothing in the file has changed, it will
+	quit.
+	<tty>No changes.</tty>
+      </li>
+      <li>
+	Syntax error: Oops.  In this case you only have two options:<br/>
+	You can either re-edit the file and fix the error
+	(type <tt>e</tt>) or give up and quit (type <tt>Q</tt>).  As in
+	all menus, type <tt>?</tt> for interactive help.
+	<tty>Error: Space at beginning of line.
+What now? [eQ?]</tty>
+      </li>
+      <li>
+	Regular usage: ldapvi has compared your changed file with the
+	original contents and reports on the changes found:
+	<tty><green>add: 2</green>, <blue>rename: 1</blue>, modify: 0, <red>delete: 1</red>
+Action? [yqQvVebrs?] </tty>
+      </li>
+    </ul>
+    <p>
+      If all is well, you are now in the main loop.  Your options are:
+    </p>
+
+    <p title="Edit - diff - fail">To continue, type <tt>y</tt>.</p>
+    <ul>
+      <li><tt>y</tt> -- commit changes<br/></li>
+    </ul>
+    <p>
+      ldapvi will contact the LDAP server apply all changes.  First,
+      entries are processed in order of the changed file, then all
+      entries missing from the file are deleted.
+    </p>
+    <ul>
+      <li><tt>e</tt> -- open editor again</li>
+    </ul>
+    <p>
+      If any LDAP operation fails while processing the file, ldapvi will
+      stop, report the error, and wait for your choice.  To correct such
+      an error, go back to the editor.  Your will find all previously
+      processed entries removed from the file, with the failing change
+      at the top.  After changing the file, you will be back at the
+      prompt.
+    </p>
+    <tty>Action? [yqQvVebrs?] <b>y</b>
+ldap_modify: Strong(er) authentication required (8)
+        additional info: modifications require authentication
+Error at: cn=blub4,dc=lichteblau,dc=com
+add: 0, rename: 0, <yellow>modify: 1</yellow>, delete: 0
+Action? [yqQvVebrs?] </tty>
+
+    <p title="Reviewing changes">
+      Before applying the changes, you can inspect them in either LDIF
+      syntax or ldapvi's special changerecord syntax.
+    </p>
+    <ul>
+      <li><tt>v</tt> -- view changes as LDIF change records</li>
+    </ul>
+    <ul>
+      <li><tt>V</tt> -- view changes as ldapvi change records</li>
+    </ul>
+    <p>
+      LDIF syntax is useful if you want to copy and paste changes into a
+      file for later processing with other LDAP tools.  ldapvi syntax is
+      usually easier to read (less Base 64) and can also be entered
+      directly into the editor.
+    </p>
+
+    <p name="key-b" title="Logging in">
+      One way to bind to the LDAP server is to specify user name and
+      credentials at startup using command line options or configuration
+      files.  The other is to simply start without authentication and
+      login later.
+    </p>
+    <ul>
+      <li><tt>b</tt> -- ask for user name and rebind</li>
+    </ul>
+    <p>
+      This option will ask for your user name and password.  The user
+      name can be either an DN or a search filter.  In the latter case,
+      it must be written with parentheses around it.
+    </p>
+    <tty>Action? [yqQvVebrs?] <b>b</b>
+Filter or DN: <b>(cn=admin)</b>
+Password: 
+OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
+    <p>
+      Note that the user name is saved into <tt>~/.ldapvi_history</tt>,
+      so after entering it once, C-p or "cursor up" will save you from
+      having to type it again.
+    </p>
+    <p>
+      When relying on binding after editing, keep in mind that some
+      information will not be returned by the LDAP server unless user
+      authorization permits it in the first place.  For example,
+      a <tt>userPassword</tt> can usually only be displayed and edited
+      if you are bound as that user or root upon startup.
+    </p>
+
+    <p title="&#34;That's not what I meant!&#34;">
+      You can skip one change to proceed with the rest.
+    </p>
+    <ul>
+      <li><tt>s</tt> -- skip one entry</li>
+    </ul>
+
+    <p title="Bailing out">There is a gentle way to quit and a hard one.</p>
+    <ul>
+      <li><tt>q</tt> -- save changes as LDIF and quit</li>
+    </ul>
+    <ul>
+      <li><tt>Q</tt> -- discard changes and quit</li>
+    </ul>
+    <p>
+      <tt>q</tt> will save your changes to a new file, print the file
+      name, and quit only then.  This way your changes do not get lost
+      and you can feed them into ldapmodify at a later time.
+    </p>
+    <tty>Action? [yqQvVebrs?] <b>q</b>
+Your changes have been saved to ,ldapvi-xenon-20094.ldif.</tty>
+
+<!--
+wofuer was das doch gleich da?
+    <ul>
+      <li><tt>r</tt> - - reconnect to server</li>
+    </ul>
+-->
+  </chapter>
+
+  <chapter name="arguments" title="Command line arguments">
+    <p>
+      Basic <tt>ldapvi</tt> invocations look similar
+      to <tt>ldapsearch</tt>(1), taking an optional search filter and
+      zero or more attribute descriptions as unnamed arguments.
+    </p>
+    <code>ldapvi [OPTION]... [FILTER] [AD]...</code>
+<!--
+    <p>
+      Every option has a long name; some of them have a short alias.
+    </p>
+  -->
+    <p>
+      Index of options:
+    </p>
+    <list-options/>
+
+    <section name="connection" title="Connection parameters">
+      <p>
+	The <tt>host</tt> option specifies the LDAP server to connect
+	to.  It is required for startup (unless specified in a
+	configuration file).
+      </p>
+
+      <parameter short="h" long="host" args="hostname"
+		 brief="LDAP server to connect to">
+	Three styles of host name are recognized.
+	<ul>
+	  <li>A domain name.</li>
+	  <li><tt>ldap://hostname[:port]</tt></li>
+	  <li><tt>ldaps://hostname[:port]</tt></li>
+	</ul>
+	To specify a port number or tunnelling through SSL, the URL form
+	must be used.
+      </parameter>
+    </section>
+
+    <section name="authentication" title="Authentication">
+      <p>Parameters for simple bind operations.</p>
+      <p>
+	Note that you can also bind to the server interactively after
+	performing the search using
+	<a href="#key-b">the <tt>b</tt> command</a>.
+      </p>
+      <parameter short="D" long="user" args="dn|filter"
+		 brief="User to bind as">
+	The user name can be specified as a distinguished name
+	<code>uid=foo,ou=bar,dc=acme,dc=com</code>
+	or as a search filter
+	<code>(uid=foo)</code>
+
+	Note the use of parenthesis, which can be omitted from search
+	filters usually but are required here.  For this searching bind to
+	work, your client library must be configured with appropriate
+	default search parameters.
+      </parameter>
+      <parameter short="w" long="password" args="secret"
+		 brief="User's password">
+	Beware that passwords in a simple bind are transmitted in clear
+	text unless the connection is encrypted through SSL.
+      </parameter>
+    </section>
+
+    <section name="search" title="Search parameters">
+      <p>Where and how to look for entries.</p>
+      <parameter short="b" long="base" args="dn" brief="Search base">
+	The entry at which to start the search.
+	<p>
+	  Conflicts with <a href="#parameter-discover"><tt>--discover</tt></a>.
+	</p>
+      </parameter>
+      <parameter short="s" long="scope" values="base|one|sub"
+		 brief="Search scope">
+	<ul>
+	  <li><tt>base</tt>: Retrieve at most the entry at <tt>base</tt>.</li>
+	  <li>
+	    <tt>one</tt>: Search for entries exactly one level
+	    below <tt>base</tt>.
+	  </li>
+	  <li>
+	    <tt>sub</tt>: Search the entire subtree starting at <tt>base</tt>.
+	  </li>
+	</ul>
+      </parameter>
+      <parameter short="S" long="sort" args="keys"
+		 brief="Search control">
+	Use the search control to instruct the server to sort results
+	on <i>keys</i>.  ldapvi will fail if the server does not support
+	the control.  Unfortunately, few servers do.
+      </parameter>
+    </section>
+
+    <section name="cool" title="Cool parameters">
+      <parameter short="d" long="discover" brief="Auto-detect naming contexts">
+	With this option, ldapvi will first read the root DN, then repeat
+	the search for each naming context found and present the
+	concatenation of all search results.
+	<p>
+	  Conflicts with <a href="#parameter-base"><tt>--base</tt></a>.
+	</p>
+	<p>
+	  With <a href="#parameter-config"><tt>--config</tt></a>, show
+	  a <tt>BASE</tt> configuration line for each context.
+	</p>
+      </parameter>
+      <parameter short="o"
+		 long="class"
+		 args="objectClass"
+		 brief="Class to add">
+	Read the server's schema for the specified objectclass to find out
+	which attributes an entry of this class must have and can have.
+	Then open the editor with an entry template containing one line
+	for each such attribute the user needs to fill out.  Optional
+	attributes are included as comments.
+	<p>
+	  The option can be repeated to include
+	  additional, <i>auxiliary</i> classes.
+	</p>
+      </parameter>
+    </section>
+
+    <section name="misc" title="Miscellaneous options">
+      <parameter short="A" long="add" brief="Start with empty file">
+	Do not search, start with an empty file instead.
+	<p>
+	  This is the little brother of
+	  the <a href="#parameter-class"><tt>--class</tt> parameter</a>,
+	  which is more interesting for the original use case of this
+	  option, adding new entries.
+	</p>
+	<p>
+	  Although it retains its old name associating it
+	  with <tt>add</tt> records, this option is still useful because
+	  allows the interactive entry
+	  of <tt>delete</tt>, <tt>modify</tt>, or <tt>rename</tt>
+	  changerecords.
+	</p>
+      </parameter>
+      <parameter short="a"
+		 long="deref"
+		 values="never|searching|finding|always"
+		 brief="Alias dereferencing mode">
+	Default is <tt>never</tt>.
+      </parameter>
+      <parameter short="c"
+		 long="config"
+		 brief="Print parameters in ldap.conf syntax">
+
+	Print a configuration file in standard <tt>ldap.conf</tt> syntax
+	which reflects current command line arguments.  The file is
+	written to standard output.  Use this option to create an
+	initial configuration file after experimenting with search
+	parameters.  Useful in conjunction
+	with <a href="#parameter-discover"><tt>--discover</tt></a>.
+      </parameter>
+      <parameter long="encoding"
+		 values="ASCII|UTF-8|binary"
+		 brief="The encoding to allow">
+	This option controls how ldapvi deals with non-ASCII bytes in
+	attribute values.
+	<ul>
+	  <li>
+	    <tt>ASCII</tt>: If an attribute value contains any non-ASCII
+	    character, use Base 64 encoding for this value
+	  </li>
+	  <li>
+	    <tt>UTF-8</tt>: Use auto-detection.  If an attribute value
+	    parses as correct UTF-8, pass it through to the file or
+	    terminal unchanged.  Otherwise, fall back to Base 64.  Mark
+	    the file's encoding as UTF-8 for Emacs and VIM.
+	  </li>
+	  <li>
+	    <tt>binary</tt>: Do not inspect attribute values at all, let
+	    arbitrary data through, including zero bytes.  Do not use
+	    Base 64.
+	  </li>
+	</ul>
+	<p>
+	  The default is <tt>UTF-8</tt>.
+	</p>
+      </parameter>
+      <parameter short="M" long="managedsait" brief="manageDsaIT control">
+	Use this option to edit referral entries.
+      </parameter>
+      <parameter short="Z" long="starttls" brief="Require startTLS.">
+	After opening an unencrypted LDAP connection, use startTLS to
+	enable SSL.  (This is an alternative to LDAP connections
+	tunnelled through SSL, specified using <tt>ldaps://</tt> URLs.)
+      </parameter>
+      <parameter long="tls"
+		 values="never|allow|try|strict"
+		 brief="Level of TLS strictness">
+	This option controls the level of certificate checking
+	strictness.  Default is <tt>try</tt>.
+	<p>
+	  fixme: If anyone has a concise description of what these
+	  values mean rather than the wishy-washy explanations I can
+	  find right now, please tell.  Thanks.
+	</p>
+	<p>
+	  (Basically, if you want to use SSL but your certificate is
+	  self-signed, you might want to experiment with something less
+	  than <tt>try</tt>.)
+	</p>
+      </parameter>
+      <parameter short="R" long="read" args="DN" brief="Read this entry">
+	A rather trivial option.  It means the same as:
+	<code>-b DN -s base '(objectclass=*)' + *</code>
+	<p>
+	  This option is useful when you want to read the root DN with
+	  all its funny operational attributes but cannot remember how
+	  that is done.  Just&#160;do:
+	</p>
+	<code>-R ''</code>
+      </parameter>
+      <parameter short="v" long="verbose" brief="Note every update">
+	Print the distinguished name of every entry as it is being
+	processed.
+      </parameter>
+<!--
+      <parameter short="q" long="quiet" brief="Disable progress output">
+	Make ldapvi shut up a little.
+      </parameter>
+      <parameter short="!"
+		 long="noquestions"
+		 brief="Don't ask for confirmation">
+	documentme
+      </parameter>
+  -->
+      <parameter short="H" long="help" brief="Print usage information">
+	Print help on command line arguments.
+      </parameter>
+    </section>
+  </chapter>
+
+  <chapter name="syntax" title="ldapvi syntax explained">
+    <p>
+      ldapvi uses an LDIF-like syntax, but not standard LDIF.  This
+      chapter includes examples explaining the difference between the
+      two formats.  (A precise, technical definition of ldapvi syntax is
+      given in the <a href="#bnf">next section</a>.)
+    </p>
+
+    <section name="basics" title="Basics">
+      <p>Comments are lines starting with a sharpsign:</p>
+      <code># like this</code>
+      <p>
+	They are allowed both between entries and in the middle of entries
+	(but not in the middle of an attribute value).
+      </p>
+
+      <p>Empty lines are used to separate entries:</p>
+      <code>0 dc=lichteblau,dc=com
+<b># don't touch the number!</b>
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: lichteblau
+dc: lichteblau
+
+<b># more than one empty line would be OK here, too</b>
+add cn=admin,dc=lichteblau,dc=com
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: admin
+description: LDAP administrator</code>
+      <p>
+	So far this looks pretty much like LDIF, except for the
+	record <i>key</i> that appears instead of the <tt>dn:</tt> LDIF
+	uses to start an entry.
+      </p>
+      <ul>
+	<li>
+	  Numbers as keys reference entries read from the server.  ldapvi
+	  uses them to find the original entry when comparing your changed
+	  file with its unchanged copy.
+	</li>
+	<li>
+	  Special key <tt>add</tt> is used for new entries that are to be
+	  added to the tree.  Except for not having a number key, its
+	  syntax is the same as for normal entries.
+	</li>
+	<li>
+	  In addition, there are special keys for <i>change records</i>:
+	  <tt>rename</tt>, <tt>delete</tt>, and <tt>modify</tt>.  Change
+	  records have special syntax and
+	  are <a href="#syntax-changerecords">explained below</a> in
+	  detail.
+	</li>
+      </ul>
+      <p>
+	First though, more on low-level syntax issues.
+      </p>
+    </section>
+
+    <section name="encodings" title="Value encodings">
+      <p>
+	All non-empty, non-comment "lines" have the same base syntax: A
+	left-hand and a right-hand side, separated by an optional
+	encoding marker and a space.  (Depending on the encoding used, a
+	such a logical line may include newline characters.)
+      </p>
+      <p>
+	The syntax of the right-hand side depends on the encoding marker.
+	For simple ASCII text without special characters, there are
+	multiple valid encodings that can be used.
+      </p>
+      <p>
+	This includes the first line of a record with the distinguished
+	name, its base syntax is the same as for the attribute lines.  For
+	traditional reasons, ldapvi prints this line without a colon, but
+	that is not a requirement:
+      </p>
+      <code><b># rather than writing this:</b>
+add cn=admin,dc=lichteblau,dc=com
+
+<b># we could have included a colon:</b>
+add: cn=admin,dc=lichteblau,dc=com
+
+<b># or actually, this:</b>
+add:; cn=admin,dc=lichteblau,dc=com</code>
+      <p>
+	Or, vice versa, we could have omitted the colon from those
+	attribute values.  ldapvi prints it only so that entries looks for
+	familiar to eyes used to LDIF.
+      </p>
+      <p>
+	Value encodings are:
+      </p>
+      <ul>
+	<li><tt>ad: value</tt>: LDIF-compatible</li>
+	<li><tt>ad:: value</tt>: Base 64</li>
+	<li><tt>ad value</tt>: backslashed (short form)</li>
+	<li><tt>ad:; value</tt>: backslashed (long form)</li>
+	<li><tt>ad:<i>n</i> value</tt>: binary</li>
+	<li><tt>ad:&lt; value</tt>: input from file</li>
+	<li><tt>ad:crypt value</tt>: userPassword {CRYPT}-hash</li>
+	<li><tt>ad:cryptmd5 value</tt>: userPassword {CRYPT}-hash</li>
+	<li><tt>ad:md5 value</tt>: userPassword {MD5}-hash</li>
+	<li><tt>ad:smd5 value</tt>: userPassword {SMD5}-hash</li>
+	<li><tt>ad:sha value</tt>: userPassword {SHA}-hash</li>
+	<li><tt>ad:ssha value</tt>: userPassword {SSHA}-hash</li>
+      </ul>
+      <p title="LDIF-compatible encoding">
+	Lines with just a colon and a space are parsed according to normal
+	LDIF rules.  Values must be ASCII-only and must not contain zero
+	bytes, LF, or CR.  In addition, they must not start with a space,
+	a colon, or a less-than sign.
+      </p>
+      <p>
+	This encoding allows LDIF-style line folding: If a line ends, and
+	the first character of the next line, if any, is a space, the
+	nextline and the space are elided and parsing continues on the
+	next line.
+      </p>
+      <p>
+	Note: The language for attribute value lines described above is
+	the common subset of LDIF's attrval-spec and the actual syntax
+	accepted by ldapvi for this value encoding.  ldapvi will only
+	ever print out values in this encoding if they follow these
+	rules and hence are valid LDIF, but is more liberal in parsing
+	them.  It accepts space, colon, or less-than sign as the first
+	character.  It can allow them without ambiguity because, in
+	contrast to LDIF, it does not ignore an arbitrary number of
+	space characters after the colon.
+      </p>
+      <p>
+	Examples of valid LDIF values:
+      </p>
+      <code><b># normally, one would write:</b>
+objectClass: posixAccount
+
+<b># but with line folding, the same value can be broken into two lines:</b>
+objectClass: posix
+ Account
+
+<b># in contrast to ldapvi backslashed format, this encoding does not
+# interpret backslashes specially at all:</b>
+cn: this is a value containing a backslash\
+ but no newline
+</code>
+      <p>
+	Examples of attribute values not representable in
+	LDIF-compatible encoding:
+      </p>
+      <code><b># must not start with '&lt;':</b>
+<b># [accepted by ldapvi but not LDIF]</b>
+<strike>document: &lt;?xml version="1.0" encoding="UTF-8"&gt;&lt;foo/&gt;</strike>
+
+<b># cannot start with a space:</b>
+<b># [LDIF would ignore the space]</b>
+<strike>foo:  ...</strike>
+
+<b># must not start with a colon:</b>
+<b># [accepted by ldapvi but not LDIF]</b>
+<strike>foo: ::::::::</strike>
+
+<b># must not contain non-ASCII bytes:</b>
+<strike>surname: M&#252;ller</strike>
+
+<b># cannot represent newlines:</b>
+<strike>mail: From david@lichteblau.com Mon Apr  1 00:11:22 2006
+Return-path: &lt;david@lichteblau.com&gt;
+Envelope-to: lists@mail.askja.de</strike></code>
+
+      <p title="Base 64 encoding">
+	Base 64 can be used just as in LDIF.  
+      </p>
+      <code><b># This is what the XML from above looks like in strict LDIF:</b>
+document:: PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPjxmb28vPg==</code>
+
+      <p title="ldapvi backslashed encoding">
+	This is the format ldapvi falls back to if a value cannot be
+	represented in LDIF-compatible encoding without resorting to
+	Base 64.  Any character is valid in this encoding, except for
+	two characters with a special meaning:
+      </p>
+      <ul>
+	<li>newline terminates the value unless escaped with a backslash</li>
+	<li>backslash escapes the following character</li>
+      </ul>
+      <p>
+	Examples of valid backslashed attributes:
+      </p>
+      <code><b># any funny characters are OK</b>
+document:; &lt;?xml version="1.0" encoding="UTF-8"&gt;
+foo:;  ...
+foo:; ::::::::
+surname:; M&#252;ller
+
+<b># backslash escapes newline</b>
+mail:; From david@lichteblau.com Mon Apr  1 00:11:22 2006\
+Return-path:; &lt;david@lichteblau.com&gt;\
+Envelope-to:; lists@mail.askja.de
+
+<b># No LDIF line folding, however, so this value contains a space:</b>
+cn:; David\
+ Lichteblau
+</code>
+      <p>
+	Counter-example:
+      </p>
+      <code><b># Parsable first line, followed by garbage on the second:</b>
+<strike>cn:; David
+ Lichteblau</strike></code>
+      <p>
+	Finally, in most situations <tt>:;</tt> can be omitted, leaving
+	just a space between the left-hand and right-hand side of the
+	line.  The only exception is a line with an empty left-hand side,
+	which occurs in <a href="#syntax-changerecords">modify records</a>.
+      </p>
+      <code>foo:; bar
+<b># is the same as:</b>
+foo bar</code>
+
+      <p title="Binary encoding">
+	Decimal numbers are valid as encoding markers and specify the
+	number of bytes to read after the separating space.  No special
+	characters exist in this syntax.  This encoding is not meant for
+	interactive use, but for the sake of completeness, here is an
+	example:
+      </p>
+      <code><b># This entry has two attributes, givenname and cn:</b>
+add cn=admin,ou=passwd,dc=blubba
+givenname:5 Davidcn: admin</code>
+
+      <p title="File inclusion">
+	The less-than sign tells LDAP to read the contents of another
+	file and use them as the attribute value.  This is another
+	LDIF compatibility feature.
+      </p>
+      <code><b># oops</b>
+add cn=haxor,ou=passwd,dc=blubba
+comment:&lt; file:///etc/passwd</code>
+
+      <p title="userPassword encodings">
+	The encodings crypt, cryptmd5, md5, smd5, sha, and ssha are
+	designed for the <tt>userPassword</tt> attribute.  ldapvi takes
+	the right-hand side as the password, hashes it, and
+	prepends <tt>{ENCODING}</tt> as appropriate.
+      </p>
+      <code>userPassword:crypt foo
+<b># ...could result in:</b>
+userPassword: {CRYPT}KgJTUDs14z57Q
+<b># ...or:</b>
+userPassword: {CRYPT}UoILyHlM1bPYU
+
+<b># cryptmd5 gives $1$ notation</b>
+userPassword:cryptmd5 foo
+userPassword: {CRYPT}$1$iKeAY9mQ$vmo/m/6EoDqRuVtjSqLPr0
+
+<b># while the other encodings prepend the marker of the same name:</b>
+userPassword:md5 foo
+userPassword: {MD5}AQ3GmMeoPXozyRU4wsEDXA==</code>
+    </section>
+
+    <section name="changerecords" title="Change records">
+      Aside from the obvious <tt>add</tt> records mentioned above, there
+      are three change record formats:
+      <tt>rename</tt>, <tt>modify</tt>, and <tt>delete</tt>.
+
+      <p title="rename records">
+	Like every other record, <tt>rename</tt> states the (original)
+	distinguished name of the name in the header line.  Next is one
+	additional line stating the new distinguished name.
+      </p>
+      <p>
+	The complication is that LDAP's moddn operation needs to be told
+	what to do with the old relative DN if there is a new one.  The
+	old one can be kept as an additional attribute value or deleted
+	in favour of the new one.
+      </p>
+      <p>
+	In ldapvi, this choice is made using the left-hand side of the
+	second line.  It is either "add" or "replace".
+      </p>
+      <code><b># example for "deleteoldrdn" behaviour:</b>
+rename: cn=blub4,dc=lichteblau,dc=com
+replace: cn=blub3,dc=neu,dc=com
+
+<b># alternatively, the old RDN can be kept:</b>
+rename: cn=blub3,dc=lichteblau,dc=com
+add: cn=blub4,dc=neu,dc=com</code>
+      <p>
+	In LDIF, the same changes would be written as:
+      </p>
+      <code><b># this is LDIF, not ldapvi syntax!</b>
+dn: cn=blub4,dc=lichteblau,dc=com
+changetype: modrdn
+newrdn: cn=blub3
+deleteoldrdn: 1
+newsuperior: dc=neu,dc=com
+
+dn: cn=blub3,dc=lichteblau,dc=com
+changetype: modrdn
+newrdn: cn=blub4
+deleteoldrdn: 0
+newsuperior: dc=neu,dc=com</code>
+
+      <p title="modify records">
+	These records state changes to attributes, processed in order.
+	Attributes can be changed by replacing their existing values
+	with a new set of values, adding those values to the existing
+	ones, or removing only selected old values.
+      </p>
+      <p>
+	Example:
+      </p>
+      <code><b># Let's add classes, delete a comment and remove cn entirely:</b>
+modify: dc=bar,dc=lichteblau,dc=com
+add: objectClass
+: posixAccount
+: specialAccount
+delete: comment
+: dummy user
+replace: cn
+</code>
+      <p>
+	In LDIF, this would be:
+      </p>
+      <code><b># this is LDIF, not ldapvi syntax!</b>
+dn: dc=bar,dc=lichteblau,dc=com
+changetype: modify
+add: objectClass
+objectClass: posixAccount
+objectClass: specialAccount
+-
+delete: comment
+comment: dummy user
+-
+replace: cn
+-</code>
+
+      <p title="delete records">
+	These are rather simple, they consist just of the header line.
+      </p>
+      <code>delete: dc=acme,dc=com</code>
+      <p>
+	In LDIF, this would be:
+      </p>
+      <code><b># this is LDIF, not ldapvi syntax!</b>
+dn: dc=acme,dc=com
+changetype: delete</code>
+    </section>
+  </chapter>
+  
+
+  <chapter name="bnf" title="ldapvi syntax (BNF)">
+    <p>
+      As explained above, ldapvi has its own, vaguely LDIF-inspired
+      syntax.  For a precise definition, see <tt>ldapvi-file</tt> below.
+    </p>
+    <p>
+      LDIF is defined in
+      <a href="http://www.rfc-editor.org/rfc/rfc2849.txt">RFC 2849</a>.
+    </p>
+
+    <p>
+      RFC 2849 modifies the language generated by its BNF grammar with
+      the "Notes on LDIF Syntax" (2) and (3) presented there.  These
+      notes do not apply to ldapvi syntax as stated: Line folding and
+      comments can be used, but are allowed specificially by our
+      modified BNF, not hacked into the rules later.  Line folding is
+      allowed only in LDIF-compatible attribute values and comments.
+      ldapvi files cannot be read line-by-line without knowing the
+      encoding of those lines, since newlines are permitted in certain
+      attribute value representations.
+    </p>
+
+    <p>
+      The following rules are used as defined in RFC 2849 and not
+      reproduced here: AttributeDescription, SAFE-STRING, BASE64-STRING,
+      SPACE.
+    </p>
+
+    <p title="Changes to the RFC 2849 BNF grammar"/>
+    <code>ldapvi-file = vspace ldapvi-record
+              *(vspace SEP vspace ldapvi-record) vspace
+ldapvi-record = ldapvi-attrval-record
+	        / ldapvi-rename-record
+		/ ldapvi-modify-record
+ldapvi-attrval-record = *(comment) dn-spec 1*(*(comment) attrval-spec)
+ldapvi-rename-record = *(comment)
+                       "rename" distinguishedName SEP
+		       ("add" / "replace") value-spec SEP
+ldapvi-modify-record = *(comment)
+                       "modify" distinguishedName SEP
+		       1*(*(comment) mod-spec)
+mod-spec = ("delete" / "add" / "replace") ad-value SEP
+	   *(value-enc SEP)
+
+vspace = *(comment / sep)
+comment = "#" *(ldif-char) *(SEP " " *(ldif-char)) SEP
+
+dn-spec = key distinguishedName SEP
+key = number / "add"
+distinguishedName = value-spec                  ;encoding an RFC 2253 DN
+
+attrval-spec = AttributeDescription value-spec SEP
+value-spec = value-simple / value-enc
+value-simple = SPACE escaped-string             ;escape CR/LF with '\\\\'
+value-enc = (":;" SPACE escaped-string /        ;ditto
+             ":" SPACE 0*1(SAFE-STRING          ;LDIF compatible
+                           *(SEP " " *SAFE-CHAR)) /
+             "::" SPACE BASE64-STRING /         ;ditto
+             ":" number SPACE 0*1(octet) /      ;exactly `number' octets
+             ":&lt;" SPACE url /                   ;only file:// supported
+             ":crypt" SPACE password /          ;for userPassword
+             ":cryptmd5" SPACE password /
+             ":md5" SPACE password /
+             ":smd5" SPACE password /
+             ":sha" SPACE password /
+             ":ssha" SPACE password /
+             ;; other encoding markers reserved
+            )
+
+octet = %x00-ff
+number = 1*(%x30-39)                            ;any decimal number
+ldif-char = unescaped-char / %5c                ;any except for CR/LF.
+unescaped-char = %x00-%x09 / %x0a-%x0c / %x0d-%5b / %x5d-%ff
+escaped-string = *(unescaped-char / %x5c %x0a / %x5c %x0d / %x5c %x5c)
+password = 0*ldif-char
+SEP = LF                                        ;this is a unix program!
+
+ad-value = value-spec  ;parsing as an AttributeDescription</code>
+  </chapter>
+
+  <chapter name="bugs" title="Reporting bugs">
+    <p>
+      Please report bugs to the ldapvi mailing list for archival
+      purposes.  (I am good at ignoring private mail.)
+    </p>
+    <p>
+      Address: <a href="mailto:ldapvi@lists.askja.de">ldapvi@lists.askja.de</a>
+    </p>
+  </chapter>
+</manual>
