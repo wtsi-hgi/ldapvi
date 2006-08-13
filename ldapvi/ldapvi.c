@@ -674,7 +674,7 @@ retry:
 	for (;;) {
 		switch (choose("What now?", "eQ?", "(Type '?' for help.)")) {
 		case 'e':
-			edit(data, pos);
+			edit_pos(data, pos);
 			goto retry;
 		case 'Q':
 			exit(0);
@@ -1154,16 +1154,18 @@ main(int argc, const char **argv)
 			if (cmdline.basedns->len > 0)
 				base = g_ptr_array_index(cmdline.basedns, 0);
 			add_template(ld, s, cmdline.add, base);
-		}
+		} else
+			fputc('\n', s);
 		if (fclose(s) == EOF) syserr();
 		cp("/dev/null", clean, 0, 0);
 		offsets = g_array_new(0, 0, sizeof(long));
+		edit(data, 3);
 	} else {
 		offsets = search(s, ld, &cmdline, (void *) ctrls->pdata, 0);
 		if (fclose(s) == EOF) syserr();
 		cp(data, clean, 0, 0);
+		edit_pos(data, 0);
 	}
-	edit(data, 0);
 
 	if (cmdline.noquestions) {
 		if (!analyze_changes(offsets, clean, data)) return 0;

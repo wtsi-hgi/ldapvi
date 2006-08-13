@@ -105,7 +105,10 @@ line_number(char *pathname, long pos)
 		case EOF:
 			goto done;
 		case '\n':
-			line++;
+			if ( (c = getc_unlocked(f)) != EOF) {
+				ungetc(c, f);
+				line++;
+			}
 			/* fall through */
 		default:
 			pos--;
@@ -117,16 +120,12 @@ done:
 }
 
 void
-edit(char *pathname, long pos)
+edit(char *pathname, long line)
 {
 	int childpid;
 	int status;
 	char *vi;
-	long line;
 
-	if (pos > 0)
-		line = line_number(pathname, pos);
-	
 	vi = getenv("VISUAL");
 	if (!vi) vi = getenv("EDITOR");
 	if (!vi) vi = "vi";
@@ -135,7 +134,7 @@ edit(char *pathname, long pos)
 	case -1:
 		syserr();
 	case 0:
-		if (pos > 0) {
+		if (line > 0) {
 			char buf[20];
 			snprintf(buf, 20, "+%ld", line);
 			execlp(vi, vi, buf, pathname, 0);
@@ -147,6 +146,12 @@ edit(char *pathname, long pos)
 	if (waitpid(childpid, &status, 0) == -1) syserr();
 	if (!WIFEXITED(status) || WEXITSTATUS(status))
 		yourfault("editor died");
+}
+
+void
+edit_pos(char *pathname, long pos)
+{
+	edit(pathname, pos > 0 ? line_number(pathname, pos) : -1);
 }
 
 void
