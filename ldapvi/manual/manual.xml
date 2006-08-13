@@ -97,7 +97,13 @@
     <code>$ ldapvi -c -d --host HOSTNAME</code>
     <p>
       This will ask the server for its naming contexts and print
-      something like this:
+      sample contents for <tt>~/.ldaprc</tt>
+      (or <tt>/etc/ldap.conf</tt>).
+    </p>
+    <p>
+      (Note that ldapvi also has its own <a href="config">configuration
+      file format</a> which supports multiple configuration profiles and
+      all of its options.)
     </p>
     <code><i># ldap.conf(5)
 # edit this as needed and paste into ~/.ldaprc
@@ -351,7 +357,7 @@ wofuer was das doch gleich da?
 
     <section name="cool" title="Cool parameters">
       <parameter short="d" long="discover" brief="Auto-detect naming contexts">
-	With this option, ldapvi will first read the root DN, then repeat
+	With this option, ldapvi will first read the root DSE, then repeat
 	the search for each naming context found and present the
 	concatenation of all search results.
 	<p>
@@ -407,8 +413,8 @@ wofuer was das doch gleich da?
       </parameter>
       <parameter short="c"
 		 long="config"
-		 brief="Print parameters in ldap.conf syntax">
-
+		 brief="Print parameters in ldap.conf syntax"
+		 suppress-configuration="suppress-configuration">
 	Print a configuration file in standard <tt>ldap.conf</tt> syntax
 	which reflects current command line arguments.  The file is
 	written to standard output.  Use this option to create an
@@ -470,7 +476,7 @@ wofuer was das doch gleich da?
 	A rather trivial option.  It means the same as:
 	<code>-b DN -s base '(objectclass=*)' + *</code>
 	<p>
-	  This option is useful when you want to read the root DN with
+	  This option is useful when you want to read the root DSE with
 	  all its funny operational attributes but cannot remember how
 	  that is done.  Just&#160;do:
 	</p>
@@ -490,10 +496,108 @@ wofuer was das doch gleich da?
 	documentme
       </parameter>
   -->
-      <parameter short="H" long="help" brief="Print usage information">
+      <parameter short="H" long="help" brief="Print usage information"
+		 suppress-configuration="suppress-configuration">
 	Print help on command line arguments.
       </parameter>
     </section>
+  </chapter>
+
+  <chapter name="config" title="Configuration file format">
+    <p>
+      The are two ways to configure ldapvi.  It has its own
+      configuration files <tt>~/.ldapvirc</tt>
+      (or <tt>/etc/ldapvi.conf</tt>) which support multiple configuration
+      profiles and all of its custom options.  Alternatively, it can
+      fall back to <tt>libldap</tt>'s standard configuration
+      files, <tt>/etc/ldap.conf</tt> and <tt>~/.ldaprc</tt>.
+    </p>
+
+    <p title="Files and profiles">
+      On startup, ldapvi will first look for <tt>~/.ldapvirc</tt>,
+      or <tt>/etc/ldapvi.conf</tt> if the former does not exist.
+    </p>
+    <ul>
+      <li>
+	If <tt>--profile</tt> <i>name</i> is specified at the command
+	line, one of these configuration files must exist and it must
+	contain the named profile.  Otherwise ldapvi quits with an
+	error.
+      </li>
+      <li>
+	If no <tt>--profile</tt> was given, ldapvi looks for a profile
+	called <tt>default</tt>.  If no such profile can be found or the
+	files do not exist, ldapvi falls back to <tt>libldap</tt>
+	configuration files.
+      </li>
+    </ul>
+
+    <p title="Environment variables">The choice of text editor is made
+      using environment variables.  <tt>$VISUAL</tt>
+      and <tt>$EDITOR</tt> are looked up in this order.  If neither is
+      set, ldapvi falls back to <tt>vi</tt>.
+    </p>
+
+    <p title="Profile syntax">
+      The configuration file has <a href="#syntax">ldapvi syntax</a>,
+      except with header lines of the
+      form <tt>profile</tt>&#160;<i>name</i>.
+    </p>
+    <p>
+      Every configuration file option corresponds to a command line
+      parameter.  
+    </p>
+    <p>
+      For the named command line parameters, the long name is used in
+      the configuration.  For details, refer to the documentation of
+      each parameter: <list-configuration-options/>
+    </p>
+    <p>
+      The two unnamed kinds of command line arguments are the search
+      filter and the list of attribute descriptions to be returned.  The
+      former is named &#x2799;&#160;<tt>filter</tt> in the configuration
+      file.  The latter are given as &#x2799;&#160;<tt>ad</tt>, one line
+      each.
+    </p>
+    <p>
+      For boolean flags, given without a value at the command line,
+      use <tt>yes</tt> as their value in the configuration
+      file.  (<tt>no</tt> is also allowed and has no effect.)
+    </p>
+    <p title="Example">
+      With the following configuration file, ldapvi
+      ignores <tt>libldap</tt> configuration, because a <tt>default</tt>
+      profile is given.
+    </p>
+    <ul>
+      <li>
+	The profile profile reads all entries from localhost.
+      </li>
+      <li>
+	<tt>ldapvi -p adduser</tt> will open a template for a new user
+	entry to be filled in.
+      </li>
+      <li>
+	<tt>ldapvi -p root</tt> will retrieve the root DSE with its
+	operational attributes.
+      </li>
+    </ul>
+    <code>profile default
+host: ldap://localhost
+discover: yes
+
+profile adduser
+host: ldap://localhost
+base: uid=FILLMEIN,ou=passwd,dc=lichteblau,dc=com
+class: person
+class: posixAccount
+
+profile root
+host: ldap://localhost
+base: 
+scope: base
+filter: (objectclass=*)
+ad: +</code>
   </chapter>
 
   <chapter name="syntax" title="ldapvi syntax explained">

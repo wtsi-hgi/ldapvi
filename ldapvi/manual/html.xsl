@@ -46,7 +46,7 @@
 	  <xsl:text>#</xsl:text>
 	  <xsl:value-of select="@name"/>
 	</xsl:attribute>
-	<xsl:value-of select="@title"/>
+	<b><xsl:value-of select="@title"/></b>
       </a>
       <xsl:if test="section">
 	<ul class="sub" style="margin: 0 0 0 0">
@@ -241,5 +241,22 @@
 	</a>
       </td>
     </tr>
+  </xsl:template>
+
+  <xsl:template match="list-configuration-options">
+    <xsl:apply-templates mode="configuration" select="//parameter"/>
+  </xsl:template>
+
+  <xsl:template mode="configuration" match="parameter">
+    <xsl:if test="not(@suppress-configuration)">
+      <xsl:text> &#160;&#x2799;&#160;</xsl:text>
+      <a>
+	<xsl:attribute name="href">
+	  <xsl:text>#parameter-</xsl:text>
+	  <xsl:value-of select="@long"/>
+	</xsl:attribute>
+	<xsl:value-of select="@long"/>
+      </a>
+    </xsl:if>
   </xsl:template>
 </xsl:stylesheet>
