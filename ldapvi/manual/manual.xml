@@ -265,19 +265,18 @@ wofuer was das doch gleich da?
 
   <chapter name="arguments" title="Command line arguments">
     <p>
-      Basic <tt>ldapvi</tt> invocations look similar
+      Normal <tt>ldapvi</tt> invocations look similar
       to <tt>ldapsearch</tt>(1), taking an optional search filter and
       zero or more attribute descriptions as unnamed arguments.
     </p>
     <code>ldapvi [OPTION]... [FILTER] [AD]...</code>
-<!--
     <p>
-      Every option has a long name; some of them have a short alias.
+      In addition, ldapvi can also simulate behaviour of other LDAP
+      command line tools, e.g. as an interactive substitute for
+      ldapmodify or even for a simple non-interactive usage.  See below
+      under <a href="#arguments-tools">command line tool compatibility</a>.
     </p>
-  -->
-    <p>
-      Index of options:
-    </p>
+    <p title="Index of options"/>
     <list-options/>
 
     <section name="connection" title="Connection parameters">
@@ -313,11 +312,15 @@ wofuer was das doch gleich da?
 	<code>uid=foo,ou=bar,dc=acme,dc=com</code>
 	or as a search filter
 	<code>(uid=foo)</code>
-
-	Note the use of parenthesis, which can be omitted from search
-	filters usually but are required here.  For this searching bind to
-	work, your client library must be configured with appropriate
-	default search parameters.
+	<p>
+	  Note the use of parenthesis, which can be omitted from search
+	  filters usually but are required here.  For this searching
+	  bind to work, your client library must be configured with
+	  appropriate default search parameters.
+	</p>
+	<p>
+	  Exactly one entry must match.
+	</p>
       </parameter>
       <parameter short="w" long="password" args="secret"
 		 brief="User's password">
@@ -500,6 +503,59 @@ wofuer was das doch gleich da?
 		 suppress-configuration="suppress-configuration">
 	Print help on command line arguments.
       </parameter>
+    </section>
+
+    <section name="tools" title="Command line tool compatibility">
+      <p>
+	ldapvi invocation modes inspired by LDAP command line tools:
+      </p>
+      <mode-table>
+	<mode label="Print LDIF, similar to ldapsearch">
+	  ldapvi <b>--out</b> [OPTION]... <b>[FILTER] [AD]...</b>
+	</mode>
+	<mode label="Load LDIF change records, similar to ldapmodify">
+	  ldapvi <b>--in</b> [OPTION]... <b>[FILENAME]</b>
+	</mode>
+	<mode label="Edit delete records, similar to ldapdelete">
+	  ldapvi <b>--delete</b> [OPTION]... <b>DN...</b>
+	</mode>
+	<mode label="Edit rename records, similar to ldapmodrdn">
+	  ldapvi <b>--moddn</b> [OPTION]... <b>DN1 DN2</b><br/>
+	  ldapvi <b>--modrdn</b> [OPTION]... <b>DN RDN</b>
+	</mode>
+      </mode-table>
+      <p>
+	All of these are more verbose and interactive than the standard
+	command line tools.  There are additional aliases for closer
+	compatibility:
+      </p>
+      <mode-table>
+	<mode short="--quiet --out"><b>--ldapsearch</b></mode>
+	<mode short="--noninteractive --in"><b>--ldapmodify</b></mode>
+	<mode short="--noninteractive --delete"><b>--ldapdelete</b></mode>
+	<mode short="--noninteractive --moddn"><b>--ldapmoddn</b></mode>
+	<mode short="--noninteractive --modrdn"><b>--ldapmodrdn</b></mode>
+      </mode-table>
+      <p>
+	Please keep in mind that all these invocation modes are only
+	meant to imitate LDAP command line tools <i>as far as
+	possible</i> while still working within the design of ldapvi.
+	An option-by-option emulation of the OpenLDAP command line tools
+	is <i>not</i> a goal, and minor differences in look and feel are
+	to be expected.
+      </p>
+      <p title="Format conversion"/>
+      <mode-table>
+	<mode label="Convert LDIF on stdin to ldapvi format on stdout">
+	  ldapvi --in | cat
+	</mode>
+	<mode label="Convert ldapvi format on stdin to LDIF on stdout">
+	  ldapvi --in --ldif --ldapvi | cat
+	</mode>
+      </mode-table>
+      <p>
+	(Explanation left as an exercise for the reader.)
+      </p>
     </section>
   </chapter>
 

@@ -72,8 +72,12 @@
 "\n"									   \
 "Report bugs to \"ldapvi@lists.askja.de\"."
 
-#define OPTION_TLS 1000
-#define OPTION_ENCODING 1001
+enum ldapvi_option_numbers {
+	OPTION_TLS = 1000, OPTION_ENCODING, OPTION_LDIF, OPTION_LDAPVI,
+	OPTION_OUT, OPTION_IN, OPTION_DELETE, OPTION_MODDN, OPTION_MODRDN,
+	OPTION_NOQUESTIONS, OPTION_LDAPSEARCH, OPTION_LDAPMODIFY,
+	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN
+};
 
 static struct poptOption options[] = {
 	{"host",	'h', POPT_ARG_STRING, 0, 'h', 0, 0},
@@ -86,9 +90,9 @@ static struct poptOption options[] = {
 	{"sort",	'S', POPT_ARG_STRING, 0, 'S', 0, 0},
 	{"class",	'o', POPT_ARG_STRING, 0, 'o', 0, 0},
 	{"root",	'R', POPT_ARG_STRING, 0, 'R', 0, 0},
+	{"profile",	'p', POPT_ARG_STRING, 0, 'p', 0, 0},
 	{"tls",		  0, POPT_ARG_STRING, 0, OPTION_TLS, 0, 0},
 	{"encoding",	  0, POPT_ARG_STRING, 0, OPTION_ENCODING, 0, 0},
-	{"profile",	'p', POPT_ARG_STRING, 0, 'p', 0, 0},
 	{"add",		'A', 0, 0, 'A', 0, 0},
 	{"config",	'c', 0, 0, 'c', 0, 0},
 	{"discover",	'd', 0, 0, 'd', 0, 0},
@@ -98,7 +102,21 @@ static struct poptOption options[] = {
 	{"starttls",	'Z', 0, 0, 'Z', 0, 0},
 	{"help",	'H', 0, 0, 'H', 0, 0},
 	{"version",	'V', 0, 0, 'V', 0, 0},
-	{"noquestions", '!', 0, 0, '!', 0, 0},
+	{"noninteractive", '!', 0, 0, '!', 0, 0},
+	{"deleteoldrdn", 'r', 0, 0, 'r', 0, 0},
+	{"noquestions",   0, 0, 0, OPTION_NOQUESTIONS, 0, 0},
+	{"ldif",	  0, 0, 0, OPTION_LDIF, 0, 0},
+	{"ldapvi",	  0, 0, 0, OPTION_LDAPVI, 0, 0},
+	{"out",		  0, 0, 0, OPTION_OUT, 0, 0},
+	{"in",		  0, 0, 0, OPTION_IN, 0, 0},
+	{"delete",	  0, 0, 0, OPTION_DELETE, 0, 0},
+	{"moddn",	  0, 0, 0, OPTION_MODDN, 0, 0},
+	{"modrdn",	  0, 0, 0, OPTION_MODRDN, 0, 0},
+	{"ldapsearch",	  0, 0, 0, OPTION_LDAPSEARCH, 0, 0},
+	{"ldapmodify",	  0, 0, 0, OPTION_LDAPMODIFY, 0, 0},
+	{"ldapdelete",	  0, 0, 0, OPTION_LDAPDELETE, 0, 0},
+	{"ldapmoddn",	  0, 0, 0, OPTION_LDAPMODDN, 0, 0},
+	{"ldapmodrdn",	  0, 0, 0, OPTION_LDAPMODRDN, 0, 0},
 	{0, 0, 0, 0, 0}
 };
 
@@ -218,6 +236,52 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 			usage(2, 1);
 		}
 		break;
+	case OPTION_LDIF:
+		result->ldif = 1;
+		break;
+	case OPTION_LDAPVI:
+		result->ldapvi = 1;
+		break;
+
+	case OPTION_LDAPSEARCH:
+		result->progress = 0;
+		result->noninteractive = 1;
+		/* fall through */
+	case OPTION_OUT:
+		result->mode = ldapvi_mode_out;
+		break;
+
+	case OPTION_LDAPMODIFY:
+		result->noninteractive = 1;
+		/* fall through */
+	case OPTION_IN:
+		result->mode = ldapvi_mode_in;
+		break;
+
+	case OPTION_LDAPDELETE:
+		result->noninteractive = 1;
+		/* fall through */
+	case OPTION_DELETE:
+		result->mode = ldapvi_mode_delete;
+		break;
+
+	case OPTION_LDAPMODDN:
+		result->noninteractive = 1;
+		/* fall through */
+	case OPTION_MODDN:
+		result->mode = ldapvi_mode_moddn;
+		break;
+
+	case OPTION_LDAPMODRDN:
+		result->noninteractive = 1;
+		/* fall through */
+	case OPTION_MODRDN:
+		result->mode = ldapvi_mode_modrdn;
+		break;
+
+	case 'r':
+		result->rename_dor = 1;
+		break;
 	case 'R':
 		g_ptr_array_add(result->basedns, arg);
 		result->scope = LDAP_SCOPE_BASE;
@@ -245,6 +309,9 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		result->verbose = 1;
 		break;
 	case '!':
+		result->noninteractive = 1;
+		break;
+	case OPTION_NOQUESTIONS:
 		result->noquestions = 1;
 		break;
 	default:
@@ -406,10 +473,30 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 			poptStrerror(c));
 		usage(2, 1);
 	}
-	if (!result->filter)
-		result->filter = (char *) poptGetArg(ctx);
-	if (!result->attrs)
-		result->attrs = (char **) poptGetArgs(ctx);
+	switch (result->mode) {
+	case ldapvi_mode_edit: /* fall through */
+	case ldapvi_mode_out:
+		if (!result->filter)
+			result->filter = (char *) poptGetArg(ctx);
+		if (!result->attrs)
+			result->attrs = (char **) poptGetArgs(ctx);
+		break;
+	case ldapvi_mode_delete:
+		result->delete_dns = (char **) poptGetArgs(ctx);
+		break;
+	case ldapvi_mode_moddn: /* fall through */
+	case ldapvi_mode_modrdn:
+		result->rename_old = (char *) poptGetArg(ctx);
+		result->rename_new = (char *) poptGetArg(ctx);
+		/* fixme: error on more */
+		break;
+	case ldapvi_mode_in:
+		result->in_file = (char *) poptGetArg(ctx);
+		/* fixme: error on more */
+		break;
+	default:
+		abort();
+	}		
 	/* don't free! */
 /* 	poptFreeContext(ctx); */
 }

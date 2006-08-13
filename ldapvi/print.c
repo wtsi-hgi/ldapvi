@@ -110,11 +110,11 @@ safe_string_p(char *str, int n)
 	int i;
 
 	if (n == 0) return 1;
-		
+
 	c = str[0];
 	if ((c == ' ') || (c == ':') || (c == '<'))
 		return 0;
-	
+
 	for (i = 0; i < n; i++) {
 		c = str[i];
 		if ((c == '\0') || (c == '\r') || (c == '\n') || (c >= 0x80))
@@ -123,8 +123,8 @@ safe_string_p(char *str, int n)
 	return 1;
 }
 
-void
-print_attrval(FILE *s, char *str, int len)
+static void
+print_attrval(FILE *s, char *str, int len, int prefernocolon)
 {
 	int readablep;
 	switch (print_binary_mode) {
@@ -144,6 +144,9 @@ print_attrval(FILE *s, char *str, int len)
 	if (!readablep) {
 		fputs(":: ", s);
 		print_base64((unsigned char *) str, len, s);
+	} else if (prefernocolon) {
+		fputc(' ', s);
+		write_backslashed(s, str, len);
 	} else if (!safe_string_p(str, len)) {
 		fputs(":; ", s);
 		write_backslashed(s, str, len);
@@ -162,7 +165,7 @@ print_attribute(FILE *s, tattribute *attribute)
 	for (j = 0; j < values->len; j++) {
 		GArray *av = g_ptr_array_index(values, j);
 		fputs(attribute_ad(attribute), s);
-		print_attrval(s, av->data, av->len);
+		print_attrval(s, av->data, av->len, 0);
 		fputc('\n', s);
 	}
 	if (ferror(s)) syserr();
@@ -198,11 +201,11 @@ print_ldapvi_ldapmod(FILE *s, LDAPMod *mod)
 	case LDAP_MOD_REPLACE: fputs("replace", s); break;
 	default: abort();
 	}
-	print_attrval(s, mod->mod_type, strlen(mod->mod_type));
+	print_attrval(s, mod->mod_type, strlen(mod->mod_type), 0);
 	fputc('\n', s);
 	for (; *values; values++) {
 		struct berval *value = *values;
-		print_attrval(s, value->bv_val, value->bv_len);
+		print_attrval(s, value->bv_val, value->bv_len, 0);
 		fputc('\n', s);
 	}
 	if (ferror(s)) syserr();
@@ -212,7 +215,7 @@ void
 print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods)
 {
 	fputs("\nmodify", s);
-	print_attrval(s, dn, strlen(dn));
+	print_attrval(s, dn, strlen(dn), 1);
 	fputc('\n', s);
 
 	for (; *mods; mods++)
@@ -224,18 +227,57 @@ void
 print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
 {
 	fputs("\nrename", s);
-	print_attrval(s, olddn, strlen(olddn));
+	print_attrval(s, olddn, strlen(olddn), 1);
 	fputs(deleteoldrdn ? "\nreplace" : "\nadd", s);
-	print_attrval(s, newdn, strlen(newdn));
+	print_attrval(s, newdn, strlen(newdn), 0);
 	fputc('\n', s);
 	if (ferror(s)) syserr();
+}
+
+static GString *
+rdns2gstring(char **ptr)
+{
+	GString *result = g_string_new("");
+	if (*ptr)
+		g_string_append(result, *ptr);
+	ptr++;
+	for (; *ptr; ptr++) {
+		g_string_append_c(result, ',');
+		g_string_append(result, *ptr);
+	}
+	return result;
+}
+
+/* simple version of _rename without new superior */
+void
+print_ldapvi_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn)
+{
+	char **newrdns = ldap_explode_dn(olddn, 0); 
+	GString *newdn;
+	char *tmp;
+
+	fputs("\nrename", s);
+	print_attrval(s, olddn, strlen(olddn), 1);
+	fputs(deleteoldrdn ? "\nreplace" : "\nadd", s);
+
+	/* fixme, siehe notes */
+	tmp = *newrdns;
+	*newrdns = newrdn;
+	newdn = rdns2gstring(newrdns);
+	print_attrval(s, newdn->str, newdn->len, 0);
+	fputc('\n', s);
+	g_string_free(newdn, 1);
+	*newrdns = tmp;
+
+	if (ferror(s)) syserr();
+	ldap_value_free(newrdns);
 }
 
 void
 print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods)
 {
 	fputs("\nadd", s);
-	print_attrval(s, dn, strlen(dn));
+	print_attrval(s, dn, strlen(dn), 1);
 	fputc('\n', s);
 
 	for (; *mods; mods++) {
@@ -244,7 +286,7 @@ print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods)
 		for (; *values; values++) {
 			struct berval *value = *values;
 			fputs(mod->mod_type, s);
-			print_attrval(s, value->bv_val, value->bv_len);
+			print_attrval(s, value->bv_val, value->bv_len, 0);
 			fputc('\n', s);
 		}
 	}
@@ -255,28 +297,34 @@ void
 print_ldapvi_delete(FILE *s, char *dn)
 {
 	fputs("\ndelete", s);
-	print_attrval(s, dn, strlen(dn));
+	print_attrval(s, dn, strlen(dn), 1);
 	fputc('\n', s);
 	if (ferror(s)) syserr();
 }
 
 static void
-print_ldif_ldapmod(FILE *s, LDAPMod *mod)
+print_ldif_line(FILE *s, char *ad, char *str, int len)
 {
-	struct berval **values = mod->mod_bvalues;
+	if (len == -1)
+		len = strlen(str);
+	fputs(ad, s);
+	if (safe_string_p(str, len)) {
+		fputs(": ", s);
+		fwrite(str, len, 1, s);
+	} else {
+		fputs(":: ", s);
+		print_base64((unsigned char *) str, len, s);
+	}
+	fputs("\n", s);
+	
+}
+
+static void
+print_ldif_bervals(FILE *s, char *ad, struct berval **values)
+{
 	for (; *values; values++) {
 		struct berval *value = *values;
-		fputs(mod->mod_type, s);
-		if (safe_string_p(value->bv_val, value->bv_len)) {
-			fputs(": ", s);
-			fwrite(value->bv_val, value->bv_len, 1, s);
-		} else {
-			fputs(":: ", s);
-			print_base64((unsigned char *) value->bv_val,
-				     value->bv_len,
-				     s);
-		}
-		fputs("\n", s);
+		print_ldif_line(s, ad, value->bv_val, value->bv_len);
 	}
 	if (ferror(s)) syserr();
 }
@@ -284,9 +332,9 @@ print_ldif_ldapmod(FILE *s, LDAPMod *mod)
 void
 print_ldif_modify(FILE *s, char *dn, LDAPMod **mods)
 {
-	fputs("\ndn: ", s);
-	fputs(dn, s);
-	fputs("\nchangetype: modify\n", s);
+	fputc('\n', s);
+	print_ldif_line(s, "dn", dn, -1);
+	fputs("changetype: modify\n", s);
 
 	for (; *mods; mods++) {
 		LDAPMod *mod = *mods;
@@ -300,7 +348,7 @@ print_ldif_modify(FILE *s, char *dn, LDAPMod **mods)
 		fputs(mod->mod_type, s);
 		fputc('\n', s);
 
-		print_ldif_ldapmod(s, mod);
+		print_ldif_bervals(s, mod->mod_type, mod->mod_bvalues);
 		fputs("-\n", s);
 	}
 	if (ferror(s)) syserr();
@@ -309,12 +357,14 @@ print_ldif_modify(FILE *s, char *dn, LDAPMod **mods)
 void
 print_ldif_add(FILE *s, char *dn, LDAPMod **mods)
 {
-	fputs("\ndn: ", s);
-	fputs(dn, s);
-	fputs("\nchangetype: add\n", s);
+	fputc('\n', s);
+	print_ldif_line(s, "dn", dn, -1);
+	fputs("changetype: add\n", s);
 
-	for (; *mods; mods++)
-		print_ldif_ldapmod(s, *mods);
+	for (; *mods; mods++) {
+		LDAPMod *mod = *mods;
+		print_ldif_bervals(s, mod->mod_type, mod->mod_bvalues);
+	}
 	if (ferror(s)) syserr();
 }
 
@@ -322,31 +372,103 @@ void
 print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
 {
 	char **newrdns = ldap_explode_dn(newdn, 0); 
-	char **ptr = newrdns;
+	GString *sup;
 	
-	fputs("\ndn: ", s);
-	fputs(olddn, s);
-	fputs("\nchangetype: modrdn\nnewrdn: ", s);
-	fputs(*ptr, s);  /* non-null (checked in validate_rename) */
-	fprintf(s, "\ndeleteoldrdn: %d\nnewsuperior: ", !!deleteoldrdn);
-	ptr++;
-	if (*ptr)
-		fputs(*ptr, s);
-	ptr++;
-	for (; *ptr; ptr++) {
-		fputc(',', s);
-		fputs(*ptr, s);
-	}
 	fputc('\n', s);
+	print_ldif_line(s, "dn", olddn, -1);
+	fputs("changetype: modrdn\n", s);
+
+	/* fixme, siehe notes */
+	/* non-null (checked in validate_rename) */
+	print_ldif_line(s, "newrdn", *newrdns, -1);
+
+	fprintf(s, "deleteoldrdn: %d\n", !!deleteoldrdn);
+
+	sup = rdns2gstring(newrdns + 1);
+	print_ldif_line(s, "newsuperior", sup->str, sup->len);
+	g_string_free(sup, 1);
+
 	if (ferror(s)) syserr();
 	ldap_value_free(newrdns);
+}
+
+/* simple version of _rename without new superior */
+void
+print_ldif_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn)
+{
+	fputc('\n', s);
+	print_ldif_line(s, "dn", olddn, -1);
+	fputs("changetype: modrdn\n", s);
+	print_ldif_line(s, "newrdn", newrdn, -1);
+	fprintf(s, "deleteoldrdn: %d\n", !!deleteoldrdn);
+	if (ferror(s)) syserr();
 }
 
 void
 print_ldif_delete(FILE *s, char *dn)
 {
-	fputs("\ndn: ", s);
-	fputs(dn, s);
-	fputs("\nchangetype: delete\n", s);
+	fputc('\n', s);
+	print_ldif_line(s, "dn", dn, -1);
+	fputs("changetype: delete\n", s);
+	if (ferror(s)) syserr();
+}
+
+void
+print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
+{
+	char *dn, *ad;
+	BerElement *ber;
+
+	fprintf(s, "\n%d", key);
+	dn = ldap_get_dn(ld, entry);
+	print_attrval(s, dn, strlen(dn), 1);
+	ldap_memfree(dn);
+	fputc('\n', s);
+
+	for (ad = ldap_first_attribute(ld, entry, &ber);
+	     ad;
+	     ad = ldap_next_attribute(ld, entry, ber))
+	{
+		struct berval **values = ldap_get_values_len(ld, entry, ad);
+		struct berval **ptr;
+
+		if (!values) continue;
+		for (ptr = values; *ptr; ptr++) {
+			fputs(ad, s);
+			print_attrval(s, (*ptr)->bv_val, (*ptr)->bv_len, 0);
+			fputc('\n', s);
+		}
+		ldap_memfree(ad);
+		ldap_value_free_len(values);
+	}
+	ber_free(ber, 0);
+	if (ferror(s)) syserr();
+}
+
+void
+print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
+{
+	char *dn, *ad;
+	BerElement *ber;
+
+	fputc('\n', s);
+
+	dn = ldap_get_dn(ld, entry);
+	print_ldif_line(s, "dn", dn, -1);
+	ldap_memfree(dn);
+
+	if (key != -1)
+		fprintf(s, "ldapvi-key: %d\n", key);
+
+	for (ad = ldap_first_attribute(ld, entry, &ber);
+	     ad;
+	     ad = ldap_next_attribute(ld, entry, ber))
+	{
+		struct berval **values = ldap_get_values_len(ld, entry, ad);
+		print_ldif_bervals(s, ad, values);
+		ldap_memfree(ad);
+		ldap_value_free_len(values);
+	}
+	ber_free(ber, 0);
 	if (ferror(s)) syserr();
 }

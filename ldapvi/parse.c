@@ -349,6 +349,18 @@ read_rename_body(FILE *s, GString *tmp1, GString *tmp2, int *deleteoldrdn)
 	return dn;
 }
 
+static int
+read_nothing(FILE *s, GString *tmp1, GString *tmp2)
+{
+	if (read_line(s, tmp1, tmp2) == -1)
+		return -1;
+	if (tmp1->len) {
+		fputs("Error: Garbage at end of record.\n", stderr);
+		return -1;
+	}
+	return 0;
+}
+
 static LDAPMod *
 ldapmod4line(char *action, char *ad)
 {
@@ -577,6 +589,31 @@ read_rename(FILE *s, long offset, char **dn1, char **dn2, int *deleteoldrdn)
 	return 0;
 }	
 
+int
+read_delete(FILE *s, long offset, char **dn)
+{
+	GString *tmp1 = g_string_new("");
+	GString *tmp2 = g_string_new("");
+	char *str;
+
+	int rc = read_header(tmp1, tmp2, s, offset, 0, &str, 0);
+	if (rc) {
+		g_string_free(tmp1, 1);
+		g_string_free(tmp2, 1);
+		return rc;
+	}
+
+	rc = read_nothing(s, tmp1, tmp2);
+	g_string_free(tmp1, 1);
+	g_string_free(tmp2, 1);
+
+	if (rc == -1)
+		free(str);
+	else
+		*dn = str;
+	return rc;
+}	
+
 /*
  * Lies ein modify-record nach position `offset' in `s'.
  * Liefere 0 bei Erfolg, -1 sonst.
@@ -645,7 +682,9 @@ skip_entry(FILE *s, long offset, char **key)
 			free(newdn);
 		else
 			rc = -1;
-	} else {
+	} else if (!strcmp(k, "delete"))
+		rc = read_nothing(s, tmp1, tmp2);
+	else {
 		tentry *e = entry_new(xdup(""));
 		rc = read_attrval_body(tmp1, tmp2, s, e);
 		entry_free(e);

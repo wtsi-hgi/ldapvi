@@ -45,6 +45,10 @@ void ldaperr(LDAP *ld, char *str);
 /*
  * arguments.c
  */
+enum ldapvi_mode {
+	ldapvi_mode_edit, ldapvi_mode_in, ldapvi_mode_out,
+	ldapvi_mode_delete, ldapvi_mode_moddn, ldapvi_mode_modrdn
+};
 typedef struct cmdline {
 	char *server;
 	GPtrArray *basedns;
@@ -63,8 +67,17 @@ typedef struct cmdline {
 	int deref;
 	int verbose;
 	int noquestions;
+	int noninteractive;
 	int discover;
 	int config;
+	int ldif;
+	int ldapvi;
+	int mode;
+	char **delete_dns;
+	char *rename_old;
+	char *rename_new;
+	int rename_dor;
+	char *in_file;
 } cmdline;
 
 void parse_arguments(
@@ -119,6 +132,7 @@ int peek_entry(FILE *s, long offset, char **key, long *pos);
 int read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos);
 int read_rename(FILE *s, long offset, char **dn1, char **dn2, int *);
 int read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods);
+int read_delete(FILE *s, long offset, char **dn);
 int skip_entry(FILE *s, long offset, char **key);
 int read_profile(FILE *s, tentry **entry);
 
@@ -182,16 +196,19 @@ typedef enum t_print_binary_mode {
 } t_print_binary_mode;
 extern t_print_binary_mode print_binary_mode;
 
-void print_attrval(FILE *s, char *str, int len);
 void print_entry_object(FILE *s, tentry *entry, char *key);
 void print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods);
 void print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
 void print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods);
 void print_ldapvi_delete(FILE *s, char *dn);
+void print_ldapvi_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
+void print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key);
 void print_ldif_modify(FILE *s, char *dn, LDAPMod **mods);
 void print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
 void print_ldif_add(FILE *s, char *dn, LDAPMod **mods);
 void print_ldif_delete(FILE *s, char *dn);
+void print_ldif_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
+void print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key);
 
 /*
  * search.c
@@ -199,7 +216,8 @@ void print_ldif_delete(FILE *s, char *dn);
 void discover_naming_contexts(LDAP *ld, GPtrArray *basedns);
 void get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributes);
 GArray *search(
-	FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty);
+	FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
+	int ldif);
 
 /*
  * port.c

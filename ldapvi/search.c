@@ -16,37 +16,6 @@
  */
 #include "common.h"
 
-static void
-print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
-{
-	char *dn, *ad;
-	BerElement *ber;
-
-	fprintf(s, "\n%d ", key);
-	fputs(dn = ldap_get_dn(ld, entry), s);
-	ldap_memfree(dn);
-	fputc('\n', s);
-
-	for (ad = ldap_first_attribute(ld, entry, &ber);
-	     ad;
-	     ad = ldap_next_attribute(ld, entry, ber))
-	{
-		struct berval **values = ldap_get_values_len(ld, entry, ad);
-		struct berval **ptr;
-
-		if (!values) continue;
-		for (ptr = values; *ptr; ptr++) {
-			fputs(ad, s);
-			print_attrval(s, (*ptr)->bv_val, (*ptr)->bv_len);
-			fputc('\n', s);
-		}
-		ldap_memfree(ad);
-		ldap_value_free_len(values);
-	}
-	ber_free(ber, 0);
-	if (ferror(s)) syserr();
-}
-
 static int
 get_ws_col(void)
 {
@@ -145,7 +114,7 @@ log_reference(LDAP *ld, LDAPMessage *reference, FILE *s)
 
 static void
 search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
-	       cmdline *cmdline, LDAPControl **ctrls, int notty)
+	       cmdline *cmdline, LDAPControl **ctrls, int notty, int ldif)
 {
 	int msgid;
 	LDAPMessage *result, *entry;
@@ -169,7 +138,11 @@ search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
 			offset = ftell(s);
 			if (offset == -1 && !notty) syserr();
 			g_array_append_val(offsets, offset);
-			print_entry_message(s, ld, entry, n);
+			if (ldif)
+				print_ldif_message(
+					s, ld, entry, notty ? -1 : n);
+			else
+				print_entry_message(s, ld, entry, n);
 			n++;
 			if (cmdline->progress && !notty)
 				update_progress(ld, n, entry);
@@ -195,27 +168,31 @@ search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
 }
 
 GArray *
-search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty)
+search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
+       int ldif)
 {
 	GArray *offsets = g_array_new(0, 0, sizeof(long));
 	GPtrArray *basedns = cmdline->basedns;
 	int i;
 
 	if (basedns->len == 0)
-		search_subtree(s, ld, offsets, 0, cmdline, ctrls, notty);
+		search_subtree(s, ld, offsets, 0, cmdline, ctrls, notty, ldif);
 	else
 		for (i = 0; i < basedns->len; i++) {
 			char *base = g_ptr_array_index(basedns, i);
 			if (cmdline->progress && (basedns->len > 1))
 				fprintf(stderr, "Searching in: %s\n", base);
-			search_subtree(
-				s, ld, offsets, base, cmdline, ctrls, notty);
+			search_subtree(s, ld, offsets, base, cmdline, ctrls,
+				       notty, ldif);
 		}
 
 	if (!offsets->len) {
-		if (!cmdline->progress) /* if not printed already... */
-			fputs("No search results.  ", stderr);
-		fputs("(Maybe use --add or --discover instead?)\n", stderr);
+		if (!cmdline->noninteractive) {
+			if (!cmdline->progress) /* if not printed already... */
+				fputs("No search results.  ", stderr);
+			fputs("(Maybe use --add or --discover instead?)\n",
+			      stderr);
+		}
 		exit(0);
 	}
 

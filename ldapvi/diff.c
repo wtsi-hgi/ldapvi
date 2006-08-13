@@ -454,11 +454,21 @@ compare_streams(thandler *handler,
 				    data, datapos, &dn1, &dn2, &deleteoldrdn)
 			    == -1)
 				goto cleanup;
-			if (handler->rename0(dn1, dn2, deleteoldrdn, userdata)
-			    == -1)
-			{
-				free(dn1);
-				free(dn2);
+			rc = handler->rename0(dn1, dn2, deleteoldrdn,userdata);
+			free(dn1);
+			free(dn2);
+			if (rc) {
+				rc = -2;
+				goto cleanup;
+			}
+			continue;
+		} else if (!strcmp(key, "delete")) {
+			char *dn;
+			if (read_delete(data, datapos, &dn) == -1)
+				goto cleanup;
+			rc = handler->delete(dn, userdata);
+			free(dn);
+			if (rc) {
 				rc = -2;
 				goto cleanup;
 			}

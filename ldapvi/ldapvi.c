@@ -81,7 +81,9 @@ cleanup(int rc, char *pathname)
 	/*
 	 * reset terminal
 	 */
-	if (tcgetattr(0, &term) == -1) syserr();
+	if (tcgetattr(0, &term) == -1)
+		/* oh, running without a terminal */
+		return;
 	term.c_lflag |= ICANON;
 	term.c_lflag |= ECHO;
 	if (tcsetattr(0, TCSANOW, &term) == -1) syserr();
@@ -273,9 +275,7 @@ vdif_rename(char *olddn, tentry *modified, void *userdata)
 {
 	FILE *s = userdata;
 	int deleteoldrdn = frob_rdn(modified, olddn, FROB_RDN_CHECK) == -1;
-	print_ldapvi_rename(
-		s, olddn, entry_dn(modified),
-		deleteoldrdn);
+	print_ldapvi_rename(s, olddn, entry_dn(modified), deleteoldrdn);
 	return 0;
 }
 
@@ -719,27 +719,39 @@ commit(LDAP *ld, GArray *offsets, char *clean, char *data, LDAPControl **ctrls,
 	}
 }
 
-FILE *
-fixup_streams()
+static int
+getty(int fd)
 {
-	FILE *target_stream = 0;
-	
-	if (!isatty(0)) yourfault("Error: Standard input is not a terminal.");
-	if (!isatty(1)) {
-		/* clever user has redirected stdout */
+	if (close(fd) == -1)
+		syserr();
+	if (open("/dev/tty", O_RDWR) != fd)
+		return -1;
+	return 0;
+}
 
-		/* record current stdout */
+static int
+fixup_streams(FILE **source, FILE **target)
+{
+	int rc = 0;
+
+	/* find a terminal and restore fds 0, 1 to a sensible value for
+	 * reading the password.  Save the original streams for later use.*/
+
+	if (!isatty(0)) {
+		/* user has redirected stdout */
+		int in = dup(fileno(stdout));
+		if (in == -1) syserr();
+		*source = fdopen(in, "r");
+		if (getty(0) == -1) rc = -1;
+	}
+	if (!isatty(1)) {
+		/* user has redirected stdout */
 		int out = dup(fileno(stdout));
 		if (out == -1) syserr();
-		target_stream = fdopen(out, "w");
-		if (close(1) == -1) syserr();
-
-		/* find a terminal and restore fd 1 to a sensible value
-		 * for reading the password */
-		if ( (out = open("/dev/tty", O_RDWR)) != 1)
-			yourfault("Error: Sorry, cannot find a terminal.");
+		*target = fdopen(out, "w");
+		if (getty(1) == -1) rc = -1;
 	}
-	return target_stream;
+	return rc;
 }
 
 static int
@@ -979,6 +991,48 @@ type_name(struct ldap_attributetype *at)
 }
 
 static void
+add_changerecord(FILE *s, cmdline *cmdline)
+{
+	switch (cmdline->mode) {
+	case ldapvi_mode_delete: {
+		char **ptr;
+		for (ptr = cmdline->delete_dns; *ptr; ptr++)
+			if (cmdline->ldif)
+				print_ldif_delete(s, *ptr);
+			else
+				print_ldapvi_delete(s, *ptr);
+		break;
+	}
+	case ldapvi_mode_moddn:
+		if (cmdline->ldif)
+			print_ldif_rename(s,
+					  cmdline->rename_old,
+					  cmdline->rename_new,
+					  cmdline->rename_dor);
+		else
+			print_ldapvi_rename(s,
+					    cmdline->rename_old,
+					    cmdline->rename_new,
+					    cmdline->rename_dor);
+		break;
+	case ldapvi_mode_modrdn:
+		if (cmdline->ldif)
+			print_ldif_modrdn(s,
+					  cmdline->rename_old,
+					  cmdline->rename_new,
+					  cmdline->rename_dor);
+		else
+			print_ldapvi_modrdn(s,
+					    cmdline->rename_old,
+					    cmdline->rename_new,
+					    cmdline->rename_dor);
+		break;
+	default:
+		abort();
+	}
+}
+
+static void
 add_template(LDAP *ld,  FILE *s, GPtrArray *wanted, char *base)
 {
 	int i, j;
@@ -1068,7 +1122,8 @@ main(int argc, const char **argv)
 	GArray *offsets;
 	int changed;
 	FILE *s;
-	FILE *target_stream;
+	FILE *source_stream = 0;
+	FILE *target_stream = 0;
 
 	cmdline.server = 0;
 	cmdline.basedns = g_ptr_array_new();
@@ -1087,8 +1142,13 @@ main(int argc, const char **argv)
 	cmdline.deref = LDAP_DEREF_NEVER;
 	cmdline.verbose = 0;
 	cmdline.noquestions = 0;
+	cmdline.noninteractive = 0;
 	cmdline.discover = 0;
 	cmdline.config = 0;
+	cmdline.ldif = 0;
+	cmdline.ldapvi = 0;
+	cmdline.mode = ldapvi_mode_edit;
+	cmdline.rename_dor = 0;
 
 	if (argc >= 2 && !strcmp(argv[1], "--diff")) {
 		if (argc != 4) {
@@ -1100,7 +1160,12 @@ main(int argc, const char **argv)
 	}
 
 	parse_arguments(argc, argv, &cmdline, ctrls);
-	target_stream = fixup_streams();
+	if (fixup_streams(&source_stream, &target_stream) == -1)
+		cmdline.noninteractive = 1;
+	if (cmdline.noninteractive) {
+		cmdline.noquestions = 1;
+		cmdline.progress = 0;
+	}
 	read_ldapvi_history();
 
 	ld = do_connect(cmdline.server,
@@ -1129,10 +1194,17 @@ main(int argc, const char **argv)
 		exit(0);
 	}
 
-	if (target_stream) {
+	if (cmdline.mode == ldapvi_mode_out
+	    || (cmdline.mode == ldapvi_mode_edit && target_stream))
+	{
 		if (cmdline.add)
 			yourfault("Cannot --add entries noninteractively.");
-		search(target_stream, ld, &cmdline, (void *) ctrls->pdata, 1);
+		if (!target_stream)
+			target_stream = stdout;
+		search(target_stream, ld, &cmdline, (void *) ctrls->pdata, 1,
+		       cmdline.mode == ldapvi_mode_out
+		       ? !cmdline.ldapvi
+		       : cmdline.ldif);
 		exit(0);
 	}
 
@@ -1145,11 +1217,16 @@ main(int argc, const char **argv)
 	data = append(dir, "/data");
 
 	if ( !(s = fopen(data, "w"))) syserr();
-	if (print_binary_mode == PRINT_UTF8)
+	if (print_binary_mode == PRINT_UTF8 && !cmdline.ldif)
 		fputs("# -*- coding: utf-8 -*- vim:encoding=utf-8:\n", s);
-	fputs("# http://www.lichteblau.com/ldapvi/manual.xml#syntax\n", s);
-	if (cmdline.add) {
-		if (cmdline.add->len) {
+	fputs(cmdline.ldif
+	      ? "# http://www.rfc-editor.org/rfc/rfc2849.txt\n"
+	      : "# http://www.lichteblau.com/ldapvi/manual.xml#syntax\n",
+	      s);
+	if (cmdline.add || cmdline.mode != ldapvi_mode_edit) {
+		if (!cmdline.add)
+			add_changerecord(s, &cmdline);
+		else if (cmdline.add->len) {
 			char *base = 0;
 			if (cmdline.basedns->len > 0)
 				base = g_ptr_array_index(cmdline.basedns, 0);
@@ -1159,13 +1236,16 @@ main(int argc, const char **argv)
 		if (fclose(s) == EOF) syserr();
 		cp("/dev/null", clean, 0, 0);
 		offsets = g_array_new(0, 0, sizeof(long));
-		edit(data, 3);
 	} else {
-		offsets = search(s, ld, &cmdline, (void *) ctrls->pdata, 0);
+		offsets = search(s, ld, &cmdline, (void *) ctrls->pdata, 0,
+				 cmdline.ldif);
 		if (fclose(s) == EOF) syserr();
 		cp(data, clean, 0, 0);
-		edit_pos(data, 0);
 	}
+	if (!cmdline.noninteractive)
+		edit(data, cmdline.ldif ? 2 : 3);
+	else if (cmdline.mode == ldapvi_mode_edit)
+		yourfault("Cannot edit entries noninteractively.");
 
 	if (cmdline.noquestions) {
 		if (!analyze_changes(offsets, clean, data)) return 0;

@@ -259,4 +259,37 @@
       </a>
     </xsl:if>
   </xsl:template>
+
+  <xsl:template match="mode-table">
+    <table cellspacing="0">
+      <xsl:apply-templates/>
+    </table>
+  </xsl:template>
+
+  <xsl:template match="mode">
+    <tr>
+      <td width="20">&#160;</td>
+      <td style="border-bottom: 1px solid #707070">
+	<tt><xsl:apply-templates/></tt>
+      </td>
+      <td style="border-bottom: 1px solid #707070;
+		 border-right: 1px solid #707070">
+	&#160;
+      </td>
+      <td style="border-bottom: 1px solid #707070">
+	&#160;
+      </td>
+      <td style="border-bottom: 1px solid #707070" valign="top">
+	<xsl:choose>
+	  <xsl:when test="@label">
+	    <xsl:value-of select="@label"/>
+	  </xsl:when>
+	  <xsl:otherwise>
+	    Short for
+	    <tt><xsl:value-of select="@short"/></tt>
+	  </xsl:otherwise>
+	</xsl:choose>
+      </td>
+    </tr>
+  </xsl:template>
 </xsl:stylesheet>
