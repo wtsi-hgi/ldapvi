@@ -1003,7 +1003,7 @@ add_changerecord(FILE *s, cmdline *cmdline)
 				print_ldapvi_delete(s, *ptr);
 		break;
 	}
-	case ldapvi_mode_moddn:
+	case ldapvi_mode_rename:
 		if (cmdline->ldif)
 			print_ldif_rename(s,
 					  cmdline->rename_old,

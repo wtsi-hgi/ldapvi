@@ -47,7 +47,7 @@ void ldaperr(LDAP *ld, char *str);
  */
 enum ldapvi_mode {
 	ldapvi_mode_edit, ldapvi_mode_in, ldapvi_mode_out,
-	ldapvi_mode_delete, ldapvi_mode_moddn, ldapvi_mode_modrdn
+	ldapvi_mode_delete, ldapvi_mode_rename, ldapvi_mode_modrdn
 };
 typedef struct cmdline {
 	char *server;

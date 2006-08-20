@@ -503,11 +503,23 @@ wofuer was das doch gleich da?
 		 suppress-configuration="suppress-configuration">
 	Print help on command line arguments.
       </parameter>
+      <parameter long="deleteoldrdn" brief="Delete the old RDN">
+	When changing the relative distinguished name to a new attribute
+	value, delete the old attribute value instead of keeping it.
+	<p>
+	  This option applies only to
+	  the <a href="#parameter-rename"><tt>--rename</tt></a> mode.
+	</p>
+      </parameter>
     </section>
 
     <section name="tools" title="Command line tool compatibility">
       <p>
 	ldapvi invocation modes inspired by LDAP command line tools:
+	<extra-parameter long="out" brief="Print entries"/>
+	<extra-parameter long="in" brief="Load change records"/>
+	<extra-parameter long="delete" brief="Edit a delete record"/>
+	<extra-parameter long="rename" brief="Edit a rename record"/>
       </p>
       <mode-table>
 	<mode label="Print LDIF, similar to ldapsearch">
@@ -520,21 +532,31 @@ wofuer was das doch gleich da?
 	  ldapvi <b>--delete</b> [OPTION]... <b>DN...</b>
 	</mode>
 	<mode label="Edit rename records, similar to ldapmodrdn">
-	  ldapvi <b>--moddn</b> [OPTION]... <b>DN1 DN2</b><br/>
-	  ldapvi <b>--modrdn</b> [OPTION]... <b>DN RDN</b>
+	  ldapvi <b>--rename</b> [OPTION]... <b>DN1 DN2</b><!--<br/>
+	  ldapvi <b>-&#45;modrdn</b> [OPTION]... <b>DN RDN</b>-->
 	</mode>
       </mode-table>
       <p>
 	All of these are more verbose and interactive than the standard
 	command line tools.  There are additional aliases for closer
 	compatibility:
+	<extra-parameter long="ldapsearch"
+			 brief="Print entries noninteractively"/>
+	<extra-parameter long="ldapmodify"
+			 brief="Apply change records noninteractively"/>
+	<extra-parameter long="ldapdelete"
+			 brief="Delete an entry noninteractively"/>
+	<extra-parameter long="ldapmoddn"
+			 brief="Rename an entry noninteractively"/>
       </p>
       <mode-table>
 	<mode short="--quiet --out"><b>--ldapsearch</b></mode>
 	<mode short="--noninteractive --in"><b>--ldapmodify</b></mode>
 	<mode short="--noninteractive --delete"><b>--ldapdelete</b></mode>
-	<mode short="--noninteractive --moddn"><b>--ldapmoddn</b></mode>
-	<mode short="--noninteractive --modrdn"><b>--ldapmodrdn</b></mode>
+	<mode short="--noninteractive --rename"><b>--ldapmoddn</b></mode>
+<!--
+	<mode short="-&#45;noninteractive -&#45;modrdn"><b>-&#45;ldapmodrdn</b></mode>
+-->
       </mode-table>
       <p>
 	Please keep in mind that all these invocation modes are only

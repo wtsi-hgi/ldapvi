@@ -74,6 +74,23 @@
     <xsl:apply-templates/>
   </xsl:template>
 
+  <xsl:template match="anchor">
+    <a>
+      <xsl:attribute name="name">
+	<xsl:value-of select="@name"/>
+      </xsl:attribute>
+    </a>
+  </xsl:template>
+
+  <xsl:template match="extra-parameter">
+    <a>
+      <xsl:attribute name="name">
+	<xsl:text>parameter-</xsl:text>
+	<xsl:value-of select="@long"/>
+      </xsl:attribute>
+    </a>
+  </xsl:template>
+
   <xsl:template match="chapter">
     <h2>
       <xsl:value-of select="@title"/>
@@ -215,10 +232,11 @@
   <xsl:template match="list-options">
     <table>
       <xsl:apply-templates mode="options" select="..//parameter"/>
+      <xsl:apply-templates mode="options" select="..//extra-parameter"/>
     </table>
   </xsl:template>
 
-  <xsl:template mode="options" match="parameter">
+  <xsl:template mode="options" match="parameter|extra-parameter">
     <tr style="">
       <td width="20">&#160;</td>
       <td>
@@ -245,9 +263,10 @@
 
   <xsl:template match="list-configuration-options">
     <xsl:apply-templates mode="configuration" select="//parameter"/>
+    <xsl:apply-templates mode="configuration" select="//extra-parameter"/>
   </xsl:template>
 
-  <xsl:template mode="configuration" match="parameter">
+  <xsl:template mode="configuration" match="parameter|extra-parameter">
     <xsl:if test="not(@suppress-configuration)">
       <xsl:text> &#160;&#x2799;&#160;</xsl:text>
       <a>

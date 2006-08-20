@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- mode: c; c-backslash-column: 78; c-backslash-max-column: 78 -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,63 +19,76 @@
 #include "common.h"
 #include "version.h" 
 
-#define USAGE								   \
-"Usage: ldapvi [OPTION]... [FILTER] [AD]...\n"				   \
-"       ldapvi --diff FILE1 FILE2\n"					   \
-"Quickstart:\n"                                                            \
-"       ldapvi --discover --host HOSTNAME\n"                               \
-"Perform an LDAP search and update results using a text editor.\n"	   \
-"\n"									   \
-"Connection options:\n"							   \
-"  -h, --host URL         Server.\n"					   \
-"  -D, --user USER        Search filter or DN: User to bind as.     [1]\n" \
-"  -w, --password SECRET  USER's password.\n"				   \
-"\n"									   \
-"Search parameters:\n"							   \
-"  -b, --base DN          Search base.\n"				   \
-"  -s, --scope SCOPE      Search scope.  One of base|one|sub.\n"	   \
-"  -S, --sort KEYS        Sort control (critical).\n"			   \
-"\n"									   \
-"Miscellaneous options:\n"						   \
-"  -A, --add              Don't search, start with empty file.  See -o.\n" \
-"  -o, --class OBJCLASS   Class to add.  Can be repeated.  Implies -A.\n"  \
-"  -a, --deref            never|searching|finding|always\n"		   \
-"  -d, --discover         Auto-detect naming contexts.              [2]\n" \
-"  -c, --config           Print parameters in ldap.conf syntax.\n"         \
-"      --encoding [ASCII|UTF-8|binary]\n"                                  \
-"                         The encoding to allow.  Default is UTF-8.\n"     \
-"  -M, --managedsait      manageDsaIT control (critical).\n"		   \
-"  -Z, --starttls         Require startTLS.\n"				   \
-"      --tls [never|allow|try|strict]  Level of TLS strictess.\n"          \
-"  -R, --read DN          Same as -b DN -s base '(objectclass=*)' + *\n"   \
-"  -q, --quiet            Disable progress output.\n"			   \
-"  -v, --verbose          Note every update.\n"				   \
-"  -!, --noquestions      Don't ask for confirmation.\n"		   \
-"  -H, --help             This help.\n"					   \
-"\n"									   \
-"Environment variables: VISUAL, EDITOR, PAGER.\n"			   \
-"\n"									   \
-"[1] User names can be specified as distinguished names:\n"		   \
-"      uid=foo,ou=bar,dc=acme,dc=com\n"					   \
-"    or search filters:\n"						   \
-"      (uid=foo)\n"							   \
-"    Note the use of parenthesis, which can be omitted from search\n"	   \
-"    filters usually but are required here.  For this searching bind to\n" \
-"    work, your client library must be configured with appropriate\n"	   \
-"    default search parameters.\n"					   \
-"\n"									   \
-"[2] Repeat the search for each naming context found and present the\n"    \
-"    concatenation of all search results.  Conflicts with --base.\n"	   \
-"    With --config, show a BASE configuration line for each context.\n"    \
-"\n"									   \
-"A special (offline) option is --diff, which compares two files\n"	   \
-"and writes any changes to standard output in LDIF format.\n"		   \
-"\n"									   \
+#define USAGE								      \
+"Usage: ldapvi [OPTION]... [FILTER] [AD]...\n"				      \
+"Quickstart:\n"								      \
+"       ldapvi --discover --host HOSTNAME\n"				      \
+"Perform an LDAP search and update results using a text editor.\n"	      \
+"\n"									      \
+"Other usage:\n"							      \
+"       ldapvi --out [OPTION]... [FILTER] [AD]...  Print entries\n"	      \
+"       ldapvi --in [OPTION]... [FILENAME]         Load change records\n"     \
+"       ldapvi --delete [OPTION]... DN...          Edit a delete record\n"    \
+"       ldapvi --rename [OPTION]... DN1 DN2        Edit a rename record\n"    \
+"       ldapvi --diff FILE1 FILE2                  Compare two files\n"	      \
+"\n"									      \
+"Connection options:\n"							      \
+"  -h, --host URL         Server.\n"					      \
+"  -D, --user USER        Search filter or DN: User to bind as.     [1]\n"    \
+"  -w, --password SECRET  USER's password.\n"				      \
+"\n"									      \
+"Search parameters:\n"							      \
+"  -b, --base DN          Search base.\n"				      \
+"  -s, --scope SCOPE      Search scope.  One of base|one|sub.\n"	      \
+"  -S, --sort KEYS        Sort control (critical).\n"			      \
+"\n"									      \
+"Miscellaneous options:\n"						      \
+"  -A, --add              Don't search, start with empty file.  See -o.\n"    \
+"  -o, --class OBJCLASS   Class to add.  Can be repeated.  Implies -A.\n"     \
+"  -c, --config           Print parameters in ldap.conf syntax.\n"	      \
+"      --deleteoldrdn     (Only with --rename:) Delete the old RDN.\n"	      \
+"  -a, --deref            never|searching|finding|always\n"		      \
+"  -d, --discover         Auto-detect naming contexts.              [2]\n"    \
+"      --encoding [ASCII|UTF-8|binary]\n"				      \
+"                         The encoding to allow.  Default is UTF-8.\n"	      \
+"  -H, --help             This help.\n"					      \
+"  -M, --managedsait      manageDsaIT control (critical).\n"		      \
+"  -!, --noquestions      Don't ask for confirmation.\n"		      \
+"  -q, --quiet            Disable progress output.\n"			      \
+"  -R, --read DN          Same as -b DN -s base '(objectclass=*)' + *\n"      \
+"  -Z, --starttls         Require startTLS.\n"				      \
+"      --tls [never|allow|try|strict]  Level of TLS strictess.\n"	      \
+"  -v, --verbose          Note every update.\n"				      \
+"\n"									      \
+"Shortcuts:\n"								      \
+"      --ldapsearch       Short for --quiet --out\n"			      \
+"      --ldapmodify       Short for --noninteractive --in\n"		      \
+"      --ldapdelete       Short for --noninteractive --delete\n"	      \
+"      --ldapmoddn        Short for --noninteractive --rename\n"	      \
+"\n"									      \
+"Environment variables: VISUAL, EDITOR, PAGER.\n"			      \
+"\n"									      \
+"[1] User names can be specified as distinguished names:\n"		      \
+"      uid=foo,ou=bar,dc=acme,dc=com\n"					      \
+"    or search filters:\n"						      \
+"      (uid=foo)\n"							      \
+"    Note the use of parenthesis, which can be omitted from search\n"	      \
+"    filters usually but are required here.  For this searching bind to\n"    \
+"    work, your client library must be configured with appropriate\n"	      \
+"    default search parameters.\n"					      \
+"\n"									      \
+"[2] Repeat the search for each naming context found and present the\n"	      \
+"    concatenation of all search results.  Conflicts with --base.\n"	      \
+"    With --config, show a BASE configuration line for each context.\n"	      \
+"\n"									      \
+"A special (offline) option is --diff, which compares two files\n"	      \
+"and writes any changes to standard output in LDIF format.\n"		      \
+"\n"									      \
 "Report bugs to \"ldapvi@lists.askja.de\"."
 
 enum ldapvi_option_numbers {
 	OPTION_TLS = 1000, OPTION_ENCODING, OPTION_LDIF, OPTION_LDAPVI,
-	OPTION_OUT, OPTION_IN, OPTION_DELETE, OPTION_MODDN, OPTION_MODRDN,
+	OPTION_OUT, OPTION_IN, OPTION_DELETE, OPTION_RENAME, OPTION_MODRDN,
 	OPTION_NOQUESTIONS, OPTION_LDAPSEARCH, OPTION_LDAPMODIFY,
 	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN
 };
@@ -110,7 +124,7 @@ static struct poptOption options[] = {
 	{"out",		  0, 0, 0, OPTION_OUT, 0, 0},
 	{"in",		  0, 0, 0, OPTION_IN, 0, 0},
 	{"delete",	  0, 0, 0, OPTION_DELETE, 0, 0},
-	{"moddn",	  0, 0, 0, OPTION_MODDN, 0, 0},
+	{"rename",	  0, 0, 0, OPTION_RENAME, 0, 0},
 	{"modrdn",	  0, 0, 0, OPTION_MODRDN, 0, 0},
 	{"ldapsearch",	  0, 0, 0, OPTION_LDAPSEARCH, 0, 0},
 	{"ldapmodify",	  0, 0, 0, OPTION_LDAPMODIFY, 0, 0},
@@ -268,8 +282,8 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 	case OPTION_LDAPMODDN:
 		result->noninteractive = 1;
 		/* fall through */
-	case OPTION_MODDN:
-		result->mode = ldapvi_mode_moddn;
+	case OPTION_RENAME:
+		result->mode = ldapvi_mode_rename;
 		break;
 
 	case OPTION_LDAPMODRDN:
@@ -484,7 +498,7 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 	case ldapvi_mode_delete:
 		result->delete_dns = (char **) poptGetArgs(ctx);
 		break;
-	case ldapvi_mode_moddn: /* fall through */
+	case ldapvi_mode_rename: /* fall through */
 	case ldapvi_mode_modrdn:
 		result->rename_old = (char *) poptGetArg(ctx);
 		result->rename_new = (char *) poptGetArg(ctx);
