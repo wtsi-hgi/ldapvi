@@ -298,7 +298,7 @@ validate_rename(tentry *clean, tentry *data, int *deleteoldrdn)
 	return 0;
 }
 
-void
+static void
 rename_entry(tentry *entry, char *newdn, int deleteoldrdn)
 {
 	if (deleteoldrdn)
@@ -308,7 +308,7 @@ rename_entry(tentry *entry, char *newdn, int deleteoldrdn)
 	entry_dn(entry) = xdup(newdn);
 }
 
-void
+static void
 update_clean_copy(GArray *offsets, char *key, FILE *s, tentry *cleanentry)
 {
 	long pos = fseek(s, 0, SEEK_END);
@@ -317,7 +317,181 @@ update_clean_copy(GArray *offsets, char *key, FILE *s, tentry *cleanentry)
 	print_entry_object(s, cleanentry, key);
 }
 
-int
+/*
+ * read a changerecord of type `key' from `data', handle it, and return
+ *    0 on success
+ *   -1 on syntax error
+ *   -2 on handler error
+ */
+static int
+process_immediate(thandler *handler, void *userdata, FILE *data,
+		  long datapos, char *key)
+{
+	if (!strcmp(key, "add")) {
+		tentry *entry;
+		LDAPMod **mods;
+		if (read_entry(data, datapos, 0, &entry, 0) == -1)
+			return -1;
+		mods = entry2mods(entry);
+		if (handler->add(entry_dn(entry), mods, userdata) == -1) {
+			ldap_mods_free(mods, 1);
+			entry_free(entry);
+			return -2;
+		}
+		ldap_mods_free(mods, 1);
+		entry_free(entry);
+		entry = 0;
+	} else if (!strcmp(key, "rename")) {
+		char *dn1;
+		char *dn2;
+		int deleteoldrdn;
+		int rc;
+		if (read_rename(data, datapos, &dn1, &dn2, &deleteoldrdn) ==-1)
+			return -1;
+		rc = handler->rename0(dn1, dn2, deleteoldrdn, userdata);
+		free(dn1);
+		free(dn2);
+		if (rc)
+			return -2;
+	} else if (!strcmp(key, "delete")) {
+		char *dn;
+		int rc;
+		if (read_delete(data, datapos, &dn) == -1)
+			return -1;
+		rc = handler->delete(dn, userdata);
+		free(dn);
+		if (rc)
+			return -2;
+	} else if (!strcmp(key, "modify")) {
+		char *dn;
+		LDAPMod **mods;
+		if (read_modify(data, datapos, &dn, &mods) ==-1)
+			return -1;
+		if (handler->change(dn, dn, mods, userdata) == -1) {
+			free(dn);
+			ldap_mods_free(mods, 1);
+			return -2;
+		}
+	} else {
+		fprintf(stderr, "Error: Invalid key: `%s'.\n", key);
+		return -1;
+	}
+	return 0;
+}
+
+/*
+ * read the next entry from `data', its clean copy from `clean', process
+ * them as described for compare_streams, and return
+ *    0 on success
+ *   -1 on syntax error
+ *   -2 on handler error
+ */
+static int
+process_next_entry(thandler *handler,
+		   void *userdata,
+		   GArray *offsets,
+		   FILE *clean,
+		   FILE *data,
+		   char *key,
+		   long datapos)
+{
+	tentry *entry = 0;
+	tentry *cleanentry = 0;
+	int rc = -1;
+	LDAPMod **mods;
+	long pos;
+	char *ptr;
+	int n;
+	int rename, deleteoldrdn;
+
+	/* find clean copy */
+	n = strtol(key, &ptr, 10);
+	if (*ptr)
+		return process_immediate(
+			handler, userdata, data, datapos, key);
+	if (n < 0 || n >= offsets->len) {
+		fprintf(stderr, "Error: Invalid key: `%s'.\n", key);
+		goto cleanup;
+	}
+	pos = g_array_index(offsets, long, n);
+	if (pos < 0) {
+		fprintf(stderr, "Error: Duplicate entry %d.\n", n);
+		goto cleanup;
+	}
+
+	/* find precise position */
+	if (read_entry(clean, pos, 0, 0, &pos) == -1) abort();
+	/* fast comparison */
+	if (n + 1 < offsets->len) {
+		long next = g_array_index(offsets, long, n + 1);
+		if (next >= 0
+		    && !fastcmp(clean, data, pos, datapos, next-pos+1))
+		{
+			datapos += next - pos;
+			long_array_invert(offsets, n);
+			if (fseek(data, datapos, SEEK_SET) == -1)
+				syserr();
+			return 0;
+		}
+	}
+
+	/* if we get here, a quick scan found a difference in the
+	 * files, so we need to read the entries and compare them */
+	if (read_entry(data, datapos, 0, &entry, 0) == -1)
+		goto cleanup;
+	if (read_entry(clean, pos, 0, &cleanentry, 0) == -1) abort();
+
+	/* compare and update */
+	if ( (rename = strcmp(entry_dn(cleanentry), entry_dn(entry)))){
+		if (validate_rename(cleanentry, entry, &deleteoldrdn)){
+			rc = -1;
+			goto cleanup;
+		}
+		if (handler->rename(entry_dn(cleanentry), entry, userdata)
+		    == -1) 
+		{
+			rc = -2;
+			goto cleanup;
+		}
+		rename_entry(cleanentry, entry_dn(entry), deleteoldrdn);
+	}
+	if ( (mods = compare_entries(cleanentry, entry))) {
+		if (handler->change(entry_dn(cleanentry),
+				    entry_dn(entry),
+				    mods,
+				    userdata)
+		    == -1)
+		{
+			if (mods) ldap_mods_free(mods, 1);
+			if (rename)
+				update_clean_copy(
+					offsets, key, clean, cleanentry);
+			rc = -2;
+			goto cleanup;
+		}
+		ldap_mods_free(mods, 1);
+	}
+
+	/* mark as seen */
+	long_array_invert(offsets, n);
+
+	entry_free(entry);
+	entry = 0;
+	entry_free(cleanentry);
+	cleanentry = 0;
+	return 0;
+
+cleanup:
+	if (entry) {
+		if (*entry_dn(entry))
+			fprintf(stderr, "Error at: %s\n", entry_dn(entry));
+		entry_free(entry);
+	}
+	if (cleanentry) entry_free(cleanentry);
+	return rc;
+}
+
+static int
 nonleaf_action(tentry *entry, GArray *offsets, int n)
 {
 	int i;
@@ -350,6 +524,73 @@ more_deletions:
 		     "  ? -- this help");
 		goto more_deletions;
 	}
+
+	/* notreached */
+	return 0;
+}
+
+/*
+ * process deletions as described for compare_streams.
+ * return 0 on success, -2 else.
+ */
+static int
+process_deletions(thandler *handler,
+		  void *userdata,
+		  GArray *offsets,
+		  FILE *clean)
+{
+	tentry *cleanentry = 0;
+	long pos;
+	int n;
+	int ignore_nonleaf = 0;
+	int n_leaf;
+	int n_nonleaf;
+	
+	do {
+		if (ignore_nonleaf)
+			printf("Retrying %d failed deletion%s...\n",
+			       n_nonleaf,
+			       n_nonleaf == 1 ? "" : "s");
+		n_leaf = 0;
+		n_nonleaf = 0;
+		for (n = 0; n < offsets->len; n++) {
+			if ( (pos = g_array_index(offsets, long, n)) < 0)
+				continue;
+			if (read_entry(clean, pos, 0, &cleanentry, 0) == -1)
+				abort();
+			switch (handler->delete(
+					entry_dn(cleanentry), userdata))
+			{
+			case -1:
+				entry_free(cleanentry);
+				return -2;
+			case -2:
+				if (ignore_nonleaf) {
+					printf("Skipping non-leaf entry: %s\n",
+					       entry_dn(cleanentry));
+					n_nonleaf++;
+					break;
+				}
+				switch (nonleaf_action(cleanentry,offsets,n)) {
+				case 0:
+					entry_free(cleanentry);
+					return -2;
+				case 2:
+					ignore_nonleaf = 1;
+					/* fall through */
+				case 1:
+					n_nonleaf++;
+				}
+				break;
+			default:
+				n_leaf++;
+				long_array_invert(offsets, n);
+			}
+			entry_free(cleanentry);
+		}
+	} while (ignore_nonleaf && n_nonleaf > 0 && n_leaf > 0);
+
+	return n_nonleaf ? -2 : 0;
 }
 
 /*
@@ -406,216 +647,36 @@ more_deletions:
 int
 compare_streams(thandler *handler,
 		void *userdata,
-		GArray *offsets, FILE *clean, FILE *data,
+		GArray *offsets,
+		FILE *clean,
+		FILE *data,
 		long *error_position,
 		long *syntax_error_position)
 {
-	tentry *entry = 0;
-	tentry *cleanentry = 0;
 	char *key = 0;
 	int n;
-	long pos;
-	char *ptr;
-	LDAPMod **mods;
-	int rc = -1;
-	int n_leaf;
-	int n_nonleaf;
-	int ignore_nonleaf = 0;
+	int rc;
 
 	for (;;) {
 		long datapos;
-		int rename, deleteoldrdn;
 
-		/* look at updated entry */
+		/* read updated entry */
 		if (key) { free(key); key = 0; }
 		if (peek_entry(data, -1, &key, &datapos) == -1) goto cleanup;
 		*error_position = datapos;
 		if (!key) break;
 
-		/* handle immediate changerecords */
-		if (!strcmp(key, "add")) {
-			if (read_entry(data, datapos, 0, &entry, 0) == -1)
-				goto cleanup;
-			mods = entry2mods(entry);
-			if (handler->add(
-				    entry_dn(entry), mods, userdata) == -1) {
-				ldap_mods_free(mods, 1);
-				rc = -2;
-				goto cleanup;
-			}
-			ldap_mods_free(mods, 1);
-			entry_free(entry);
-			entry = 0;
-			continue;
-		} else if (!strcmp(key, "rename")) {
-			char *dn1;
-			char *dn2;
-			if (read_rename(
-				    data, datapos, &dn1, &dn2, &deleteoldrdn)
-			    == -1)
-				goto cleanup;
-			rc = handler->rename0(dn1, dn2, deleteoldrdn,userdata);
-			free(dn1);
-			free(dn2);
-			if (rc) {
-				rc = -2;
-				goto cleanup;
-			}
-			continue;
-		} else if (!strcmp(key, "delete")) {
-			char *dn;
-			if (read_delete(data, datapos, &dn) == -1)
-				goto cleanup;
-			rc = handler->delete(dn, userdata);
-			free(dn);
-			if (rc) {
-				rc = -2;
-				goto cleanup;
-			}
-			continue;
-		} else if (!strcmp(key, "modify")) {
-			char *dn;
-			if (read_modify(data, datapos, &dn, &mods) ==-1)
-				goto cleanup;
-			if (handler->change(dn, dn, mods, userdata) == -1) {
-				free(dn);
-				ldap_mods_free(mods, 1);
-				rc = -2;
-				goto cleanup;
-			}
-			continue;
-		}
-
-		/* find clean copy */
-		n = strtol(key, &ptr, 10);
-		if (*ptr || n < 0 || n >= offsets->len) {
-			fprintf(stderr, "Error: Invalid key: `%s'.\n", key);
+		/* and do something with it */
+		if ( (rc = process_next_entry(
+			      handler, userdata, offsets, clean, data,
+			      key, datapos)))
 			goto cleanup;
-		}
-		pos = g_array_index(offsets, long, n);
-		if (pos < 0) {
-			fprintf(stderr, "Error: Duplicate entry %d.\n", n);
-			goto cleanup;
-		}
-
-		/* find precise position */
-		if (read_entry(clean, pos, 0, 0, &pos) == -1) abort();
-		/* fast comparison */
-		if (n + 1 < offsets->len) {
-			long next = g_array_index(offsets, long, n + 1);
-			if (next >= 0
-			    && !fastcmp(clean, data, pos, datapos, next-pos+1))
-			{
-				datapos += next - pos;
-				long_array_invert(offsets, n);
-				if (fseek(data, datapos, SEEK_SET) == -1)
-					syserr();
-				continue;
-			}
-		}
-
-		/* if we get here, a quick scan found a difference in the
-		 * files, so we need to read the entries and compare them */
-		if (read_entry(data, datapos, 0, &entry, 0) == -1)
-			goto cleanup;
-		if (read_entry(clean, pos, 0, &cleanentry, 0) == -1) abort();
-
-		/* compare and update */
-		if ( (rename = strcmp(entry_dn(cleanentry), entry_dn(entry)))){
-			if (validate_rename(cleanentry, entry, &deleteoldrdn)){
-				rc = -1;
-				goto cleanup;
-			}
-			if (handler->rename(
-				    entry_dn(cleanentry), entry, userdata)
-			    == -1) 
-			{
-				rc = -2;
-				goto cleanup;
-			}
-			rename_entry(
-				cleanentry, entry_dn(entry), deleteoldrdn);
-		}
-		if ( (mods = compare_entries(cleanentry, entry))) {
-			if (handler->change(entry_dn(cleanentry),
-					    entry_dn(entry),
-					    mods,
-					    userdata)
-			    == -1)
-			{
-				if (mods) ldap_mods_free(mods, 1);
-				if (rename)
-					update_clean_copy(offsets, key, clean, cleanentry);
-				rc = -2;
-				goto cleanup;
-			}
-			ldap_mods_free(mods, 1);
-		}
-
-		/* mark as seen */
-		long_array_invert(offsets, n);
-
-		entry_free(entry);
-		entry = 0;
-		entry_free(cleanentry);
-		cleanentry = 0;
 	}
 	if ( (*error_position = ftell(data)) == -1) syserr();
 
-	/* find deleted entries */
-	do {
-		if (ignore_nonleaf)
-			printf("Retrying %d failed deletion%s...\n",
-			       n_nonleaf,
-			       n_nonleaf == 1 ? "" : "s");
-		n_leaf = 0;
-		n_nonleaf = 0;
-		for (n = 0; n < offsets->len; n++) {
-			if ( (pos = g_array_index(offsets, long, n)) < 0)
-				continue;
-			if (read_entry(clean, pos, 0, &cleanentry, 0) == -1)
-				abort();
-			switch (handler->delete(
-					entry_dn(cleanentry), userdata))
-			{
-			case -1:
-				rc = -2;
-				goto cleanup;
-			case -2:
-				if (ignore_nonleaf) {
-					printf("Skipping non-leaf entry: %s\n",
-					       entry_dn(cleanentry));
-					n_nonleaf++;
-					break;
-				}
-				switch (nonleaf_action(cleanentry,offsets,n)) {
-				case 0:
-					rc = -2;
-					goto cleanup;
-				case 2:
-					ignore_nonleaf = 1;
-					/* fall through */
-				case 1:
-					n_nonleaf++;
-				}
-				break;
-			default:
-				n_leaf++;
-				entry_free(cleanentry);
-				cleanentry = 0;
-				long_array_invert(offsets, n);
-			}
-		}
-	} while (ignore_nonleaf && n_nonleaf > 0 && n_leaf > 0);
-	rc = (n_nonleaf ? -2 : 0);
+	rc = process_deletions(handler, userdata, offsets, clean);
 
 cleanup:
-	if (entry) {
-		if (*entry_dn(entry))
-			fprintf(stderr, "Error at: %s\n", entry_dn(entry));
-		entry_free(entry);
-	}
-	if (cleanentry) entry_free(cleanentry);
 	if (key) free(key);
 
 	if (syntax_error_position)
