@@ -575,9 +575,6 @@ wofuer was das doch gleich da?
 	  ldapvi --in --ldif --ldapvi | cat
 	</mode>
       </mode-table>
-      <p>
-	(Explanation left as an exercise for the reader.)
-      </p>
     </section>
   </chapter>
 
@@ -680,10 +677,25 @@ ad: +</code>
 
   <chapter name="syntax" title="ldapvi syntax explained">
     <p>
-      ldapvi uses an LDIF-like syntax, but not standard LDIF.  This
-      chapter includes examples explaining the difference between the
-      two formats.  (A precise, technical definition of ldapvi syntax is
-      given in the <a href="#bnf">next section</a>.)
+      <i>ldapvi syntax</i> is somewhat LDIF-like, but not the same as
+      standard LDIF.  This chapter includes examples explaining the
+      difference between the two formats.  (A precise, technical
+      definition of ldapvi syntax is given in the <a href="#bnf">next
+      section</a>.)
+    </p>
+
+    <p>
+      &#x2799; In <b>interactive editing</b>, the default is
+      <b>ldapvi syntax</b>, explained below, unless overridden
+      using <a href="#parameter-ldif"><tt>--ldif</tt></a>.
+    </p>
+    <p>
+      &#x2799; For external <b>input and output</b>
+      (see <a
+      href="#parameter-in"><tt>--in</tt></a>, <a
+      href="#parameter-out"><tt>--out</tt></a>), the default
+      is <b>standard LDIF</b> syntax, unless overridden
+      using <a href="#parameter-ldapvi"><tt>--ldapvi</tt></a>.
     </p>
 
     <section name="basics" title="Basics">

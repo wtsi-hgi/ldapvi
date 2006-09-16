@@ -1,18 +1,29 @@
 1.x 2006-xx-yy
-  - always replace entire attributes (fixing a bug reported by Javier Barroso)
-  - preprocessor sellout: automagically #ifdefed support for libldap 2.1
-  - incompatible change: value encoding md5 renamed to cryptmd5
+New features:
   - new value encodings md5, smd5, sha1, ssha1 (thanks to Michael Hanselmann)
-  - new configure option --with-libcrypto
-  - extended ldapvi syntax with change records, new key 'V'
+    * incompatible change: value encoding md5 renamed to cryptmd5
+    * new configure option --with-libcrypto
+  - extended ldapvi syntax with change records
+    * new key 'V'
+  - new command line arguments --in, --out, --delete, --rename
+  - LDIF support in the editor
+    * new command line arguments --ldif, --ldapvi, --ldapsearch, --ldapmodify,
+      --ldapdelete, --ldapmoddn
   - UTF-8 support; new command line option --encoding
-  - fixed LDIF export to always Base64-encode non-ASCII values
   - use libreadline to read the user name
-  - oops: escape backslashes properly
-  - new documentation in manual/manual.xml
   - support for configuration files ~/.ldapvirc or /etc/ldapvi.conf in
     ldapvi syntax, taking precedence over .ldaprc and /etc/ldap.conf if
-    present.  (And new command line argument --profile.)
+    present
+    * new command line argument --profile.
+Bugfixes:
+  - always replace entire attributes (fixing a bug reported by Javier Barroso)
+  - fixed LDIF export to always Base64-encode non-ASCII values
+  - oops: escape backslashes properly
+  - schema reading (--class) works with Fedora DS now
+Build change:
+  - preprocessor sellout: automagically #ifdefed support for libldap 2.1
+Last not least:
+  - new documentation in manual/manual.xml
 
 1.5 2005-12-11
   - fixed argument parsing (thanks to Andrea Barisani for the report)

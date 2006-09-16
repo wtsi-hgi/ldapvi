@@ -237,8 +237,12 @@ get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributetypes)
 	char *subschema_dn;
 	int code;
 	const char *errp;
+	char *attrs[2] = {"subschemaSubentry", 0};
 
-	entry = get_entry(ld, "", &result);
+	if (ldap_search_s(ld, "", LDAP_SCOPE_BASE, 0, attrs, 0, &result))
+		ldaperr(ld, "ldap_search");
+	if ( !(entry = ldap_first_entry(ld, result)))
+		ldaperr(ld, "ldap_first_entry");
 	values = ldap_get_values(ld, entry, "subschemaSubentry");
 	if (!values) {
 		ldap_msgfree(result);
@@ -257,8 +261,12 @@ get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributetypes)
 			struct ldap_objectclass *cls
 				= ldap_str2objectclass(
 					*ptr, &code, &errp, 0);
-			if (!cls) yourfault(ldap_scherr2str(code));
-			g_ptr_array_add(objectclasses, cls);
+			if (cls)
+                                g_ptr_array_add(objectclasses, cls);
+                        else
+                                fprintf(stderr,
+                                        "Warning: Cannot parse class: %s\n",
+                                        ldap_scherr2str(code));
 		}
 		ldap_value_free(values);
 	}
@@ -269,8 +277,12 @@ get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributetypes)
 			struct ldap_attributetype *at
 				= ldap_str2attributetype(
 					*ptr, &code, &errp, 0);
-			if (!at) yourfault(ldap_scherr2str(code));
-			g_ptr_array_add(attributetypes, at);
+			if (at)
+                                g_ptr_array_add(attributetypes, at);
+                        else
+                                fprintf(stderr,
+                                        "Warning: Cannot parse type: %s\n",
+                                        ldap_scherr2str(code));
 		}
 		ldap_value_free(values);
 	}
