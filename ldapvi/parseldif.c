@@ -28,20 +28,37 @@
 		}							\
 	} while (0)
 
+/*
+ * 0: ok
+ * -1: parse error
+ * -2: line is just "-"
+ */
 static int
-read_lhs(FILE *s, GString *lhs)
+ldif_read_ad(FILE *s, GString *lhs)
 {
 	int c;
 
 	for (;;) {
 		switch ( c = getc_unlocked(s)) {
-		case ' ':
+		case ':':
 			if (ferror(s)) syserr();
 			return 0;
 		case EOF:
 			fputs("Error: Unexpected EOF.\n", stderr);
 			return -1;
+		case '\r':
+			if (fgetc(s) != '\n')
+				return -1;
+			/* fall through */
 		case '\n':
+			if (lhs->len) {
+				if ( (c = fgetc(s)) == ' ')
+					/* folded line */
+					break;
+				if (lhs->len == 1 && lhs->str[0] == '-')
+					return -2;
+				ungetc(c, s);
+			}
 			fputs("Error: Unexpected EOL.\n", stderr);
 			return -1;
 		case 0:
@@ -54,37 +71,50 @@ read_lhs(FILE *s, GString *lhs)
 }
 
 static int
-read_backslashed(FILE *s, GString *data)
+ldif_read_encoding(FILE *s)
 {
 	int c;
 
 	for (;;) {
 		switch ( c = getc_unlocked(s)) {
-		case '\n':
-			if (ferror(s)) syserr();
-			return 0;
+		case ' ':
+			break;
+		case ':': /* fall through */
+		case '<':
+			return c;
 		case EOF:
-			goto error;
-		case '\\':
-			if ( (c = fgetc(s)) == EOF) goto error;
+			fputs("Error: Unexpected EOF.\n", stderr);
+			return -1;
+		case '\r':
+			if (fgetc(s) != '\n')
+				return -1;
 			/* fall through */
+		case '\n':
+			if ( (c = fgetc(s)) == ' ') /* folded line */ break;
+			ungetc(c, s);
+			fputs("Error: Unexpected EOL.\n", stderr);
+			return -1;
+		case 0:
+			fputs("Error: Null byte not allowed.\n", stderr);
+			return -1;
 		default:
-			fast_g_string_append_c(data, c);
+			ungetc(c, s);
+			return 0;
 		}
 	}
-
-error:
-	fputs("Error: Unexpected EOF.\n", stderr);
-	return -1;
 }
 
 static int
-read_ldif_attrval(FILE *s, GString *data)
+ldif_read_safe(FILE *s, GString *data)
 {
 	int c;
 
 	for (;;)
 		switch ( c = getc_unlocked(s)) {
+		case '\r':
+			if (fgetc(s) != '\n')
+				return -1;
+			/* fall through */
 		case '\n':
 			if ( (c = fgetc(s)) == ' ') /* folded line */ break;
 			ungetc(c, s);
@@ -99,7 +129,7 @@ read_ldif_attrval(FILE *s, GString *data)
 }
 
 static int
-read_from_file(GString *data, char *name)
+ldif_read_from_file(GString *data, char *name)
 {
 	int fd, n;
 	if ( (fd = open(name, O_RDONLY)) == -1) {
@@ -119,7 +149,7 @@ read_from_file(GString *data, char *name)
 }
 
 static int
-skip_comment(FILE *s)
+ldif_skip_comment(FILE *s)
 {
 	int c;
 
@@ -128,6 +158,10 @@ skip_comment(FILE *s)
 		case EOF:
 			fputs("Error: Unexpected EOF.\n", stderr);
 			return -1;
+		case '\r':
+			if (fgetc(s) != '\n')
+				return -1;
+			/* fall through */
 		case '\n':
 			if ( (c = fgetc(s)) == ' ') /* folded line */ break;
 			ungetc(c, s);
@@ -136,66 +170,21 @@ skip_comment(FILE *s)
 		}
 }
 
-static char *saltbag
-	= "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890./";
-
-static char *
-cryptdes(char *key)
-{
-	unsigned char salt[2];
-	int fd = open("/dev/random", 2);
-	if (fd == -1) {
-		puts("Sorry, crypt not available: Cannot open /dev/random.");
-		return 0;
-	}
-	if (read(fd, salt, 2) != 2) syserr();
-	close(fd);
-	salt[0] = saltbag[salt[0] & 63];
-	salt[1] = saltbag[salt[1] & 63];
-	return crypt(key, (char *) salt);
-}
-
-static char *
-cryptmd5(char *key)
-{
-	char *result;
-	unsigned char salt[11];
-	int i;
-	int fd = open("/dev/random", 2);
-	if (fd == -1) {
-		puts("Sorry, MD5 not available: Cannot open /dev/random.");
-		return 0;
-	}
-	salt[0] = '$';
-	salt[1] = '1';
-	salt[2] = '$';
-	if (read(fd, salt + 3, 8) != 8) syserr();
-	close(fd);
-	for (i = 3; i < 11; i++)
-		salt[i] = saltbag[salt[i] & 63];
-	result = crypt(key, (char *) salt);
-	if (!result || strlen(result) < 25) {
-		puts("Sorry, MD5 not available: Are you using the glibc?");
-		return 0;
-	}
-	return result;
-}
-
 /*
- * Read a line in 
- *   name ' ' (':' encoding)? value '\n'
- * syntax, skipping comments.  VALUE is parsed according to ENCODING.
- * Empty NAME is allowed.
+ * Read an LDIF line.
  *
- * 0: ok
- * -1: fatal parse error
- * -2: end of file or empty line
+ * 0: ok                           if name->len != 0
+ * 0: end of file or empty line    if name->len == 0
+ * -1: parse error
+ * -2: line is just "-"
  */
 static int
-read_line1(FILE *s, GString *name, GString *value)
+ldif_read_line1(FILE *s, GString *name, GString *value)
 {
 	int c;
-	char *encoding;
+	char encoding;
+	unsigned char *ustr;
+	int len;
 
 	g_string_truncate(name, 0);
 	g_string_truncate(value, 0);
@@ -206,11 +195,15 @@ read_line1(FILE *s, GString *name, GString *value)
 		switch (c) {
 		case EOF:
 			if (ferror(s)) syserr();
-			return -2;
+			return 0;
 		case '\n':
-			return -2;
+			return 0;
+		case '\r':
+			if (fgetc(s) != '\n')
+				return -1;
+			return 0;
 		case '#':
-			if (skip_comment(s) == -1) return -1;
+			if (ldif_skip_comment(s) == -1) return -1;
 			break;
 		default:
 			ungetc(c, s);
@@ -218,141 +211,151 @@ read_line1(FILE *s, GString *name, GString *value)
 		}
 	} while (c != -1);
 
-	if (read_lhs(s, name) == -1) return -1;
-	if ( encoding = memchr(name->str, ':', name->len)) {
-		encoding++;
-		name->len = encoding - name->str - 1;
-		name->str[name->len] = 0;
-	}
+	if ( c = ldif_read_ad(s, name)) return c;
+	if ( (encoding = ldif_read_encoding(s)) == -1) return -1;
 
-	if (!encoding || !strcmp(encoding, ";")) {
-		if (read_backslashed(s, value) == -1) return -1;
-	} else if (!*encoding) {
-		if (read_ldif_attrval(s, value) == -1) return -1;
-	} else if (!strcmp(encoding, ":")) {
-		unsigned char *ustr;
-		int len;
-		if (read_ldif_attrval(s, value) == -1) return -1;
+	switch (encoding) {
+	case 0:
+		if (ldif_read_safe(s, value) == -1)
+			return -1;
+		break;
+	case ':':
+		if (ldif_read_safe(s, value) == -1) return -1;
 		ustr = (unsigned char *) value->str;;
 		if ( (len = read_base64(value->str, ustr, value->len)) == -1) {
 			fputs("Error: Invalid Base64 string.\n", stderr);
 			return -1;
 		}
 		value->len = len;
-	} else if (!strcmp(encoding, "<")) {
-		if (read_ldif_attrval(s, value) == -1) return -1;
+		break;
+	case '<':
+		if (ldif_read_safe(s, value) == -1) return -1;
 		if (strncmp(value->str, "file://", 7)) {
 			fputs("Error: Unknown URL scheme.\n", stderr);
 			return -1;
 		}
-		if (read_from_file(value, value->str + 7) == -1)
+		if (ldif_read_from_file(value, value->str + 7) == -1)
 			return -1;
-	} else if (!strcasecmp(encoding, "crypt")) {
-		char *hash;
-		if (read_ldif_attrval(s, value) == -1) return -1;
-		if ( !(hash = cryptdes(value->str))) return -1;
-		g_string_assign(value, "{CRYPT}");
-		g_string_append(value, hash);
-	} else if (!strcasecmp(encoding, "cryptmd5")) {
-		char *hash;
-		if (read_ldif_attrval(s, value) == -1) return -1;
-		if ( !(hash = cryptmd5(value->str))) return -1;
-		g_string_assign(value, "{CRYPT}");
-		g_string_append(value, hash);
-	} else if (!strcasecmp(encoding, "sha")) {
-		if (read_ldif_attrval(s, value) == -1) return -1;
-		g_string_assign(value, "{SHA}");
-		if (!g_string_append_sha(value, value->str)) return -1;
-	} else if (!strcasecmp(encoding, "ssha")) {
-		if (read_ldif_attrval(s, value) == -1) return -1;
-		g_string_assign(value, "{SSHA}");
-		if (!g_string_append_ssha(value, value->str)) return -1;
-	} else if (!strcasecmp(encoding, "md5")) {
-		if (read_ldif_attrval(s, value) == -1) return -1;
-		g_string_assign(value, "{MD5}");
-		if (!g_string_append_md5(value, value->str)) return -1;
-	} else if (!strcasecmp(encoding, "smd5")) {
-		if (read_ldif_attrval(s, value) == -1) return -1;
-		g_string_assign(value, "{SMD5}");
-		if (!g_string_append_smd5(value, value->str)) return -1;
-	} else {
-		char *ptr;
-		int n = strtol(encoding, &ptr, 10);
-		if (*ptr) {
-			fputs("Error: Unknown value encoding.\n", stderr);
-			return -1;
-		}
-		g_string_set_size(value, n);
-		if (fread(value->str, 1, n, s) != n) syserr();
+		break;
+	default:
+		abort();
 	}
 	return 0;
 }
 
 
 /*
- * Read a line in 
- *   name ' ' (':' encoding)? value '\n'
- * syntax, skipping comments.  VALUE is parsed according to ENCODING.
- * Empty NAME is a parse error.
+ * Read an LDIF line ("-" not allowed).
  *
  * 0: ok                           if name->len != 0
  * 0: end of file or empty line    if name->len == 0
  * -1: parse error
  */
 static int
-read_line(FILE *s, GString *name, GString *value)
+ldif_read_line(FILE *s, GString *name, GString *value)
 {
-	int rc = read_line1(s, name, value);
-	switch (rc) {
-	case -2:
-		return 0;
-	case -1:
-		return -1;
-	case 0:
-		if (!name->len) {
-			fputs("Error: Space at beginning of line.\n", stderr);
-			return -1;
-		}
-		return 0;
-	default:
-		abort();
+	int rc = ldif_read_line1(s, name, value);
+	if (rc == -2) {
+		fputs("Error: Unexpected EOL.\n", stderr);
+		rc = -1;
 	}
+	return rc;
+}
+
+static int
+ldif_read_dnspec(FILE *s, GString *tmp, GString *dn)
+{
+	if (ldif_read_line(s, tmp, dn) == -1)
+		return -1;
+	if (strcmp(tmp->str, "dn")) {
+		fputs("Error: Expected dn-spec.\n", stderr);
+		return -1;
+	}
+	return 0;
+}
+
+static int
+ldif_read_changetype(FILE *s, GString *tmp, GString *changetype)
+{
+	if (ldif_read_line(s, tmp, changetype) == -1)
+		return -1;
+	if (strcmp(tmp->str, "changetype")) {
+		fputs("Error: Expected changetype: line.\n", stderr);
+		return -1;
+	}
+	return 0;
 }
 
 static char *
-read_rename_body(FILE *s, GString *tmp1, GString *tmp2, int *deleteoldrdn)
+ldif_read_rename_body(FILE *s,
+		      GString *tmp1, GString *tmp2,
+		      char *olddn,
+		      int *deleteoldrdn)
 {
+	char *newrdn;
 	char *dn;
+	int i;
+
+	if (ldif_read_line(s, tmp1, tmp2) == -1) return 0;
+	if (strcmp(tmp1->str, "newrdn")) {
+		fputs("Error: Expected 'newrdn'.\n", stderr);
+		return 0;
+	}
+	i = tmp2->len;
+	newrdn = xdup(tmp2->str);
 	
-	if (read_line(s, tmp1, tmp2) == -1)
-		return 0;
-	if (!tmp1->len) {
-		fputs("Error: Rename record lacks dn line.\n", stderr);
+	if (ldif_read_line(s, tmp1, tmp2) == -1) {
+		free(newrdn);
 		return 0;
 	}
-	*deleteoldrdn = !strcmp(tmp1->str, "replace");
-	if (!*deleteoldrdn && strcmp(tmp1->str, "add")) {
-		fputs("Error: Expected 'add' or 'replace' in rename record.\n",
+	if (strcmp(tmp1->str, "deleteoldrdn")) {
+		fputs("Error: Expected 'deleteoldrdn'.\n", stderr);
+		free(newrdn);
+		return 0;
+	}
+	if (!strcmp(tmp2->str, "0"))
+		*deleteoldrdn = 0;
+	else if (!strcmp(tmp2->str, "1"))
+		*deleteoldrdn = 1;
+	else {
+		fputs("Error: Expected '0' or '1' for 'deleteoldrdn'.\n",
 		      stderr);
+		free(newrdn);
 		return 0;
 	}
-	dn = xdup(tmp2->str);
-	if (read_line(s, tmp1, tmp2) == -1) {
-		free(dn);
+	
+	if (ldif_read_line(s, tmp1, tmp2) == -1) return 0;
+	if (tmp1->len == 0) {
+		char *komma = strchr(dn, ',');
+		if (!komma) {
+			free(newrdn);
+			fputs("Error: Cannot rename Root DSE.\n", stderr);
+			return 0;
+		}
+		dn = xalloc(i + strlen(komma) + 1);
+		strcpy(dn, newrdn);
+		strcpy(dn + i, komma);
+		free(newrdn);
+		return dn;
+	}
+	if (strcmp(tmp1->str, "newsuperior")) {
+		free(newrdn);
+		fputs("Error: Garbage at end of moddn record.\n", stderr);
 		return 0;
 	}
-	if (tmp1->len) {
-		free(dn);
-		fputs("Error: Garbage at end of rename record.\n", stderr);
-		return 0;
-	}
+
+	dn = xalloc(i + tmp2->len + 2);
+	strcpy(dn, newrdn);
+	dn[i] = ',';
+	strcpy(dn + i + 1, tmp2->str);
+	free(newrdn);
 	return dn;
 }
 
 static int
-read_nothing(FILE *s, GString *tmp1, GString *tmp2)
+ldif_read_nothing(FILE *s, GString *tmp1, GString *tmp2)
 {
-	if (read_line(s, tmp1, tmp2) == -1)
+	if (ldif_read_line(s, tmp1, tmp2) == -1)
 		return -1;
 	if (tmp1->len) {
 		fputs("Error: Garbage at end of record.\n", stderr);
@@ -362,7 +365,7 @@ read_nothing(FILE *s, GString *tmp1, GString *tmp2)
 }
 
 static LDAPMod *
-ldapmod4line(char *action, char *ad)
+ldif_ldapmod4line(char *ad, char *action)
 {
 	LDAPMod *m;
 	int op;
@@ -385,45 +388,56 @@ ldapmod4line(char *action, char *ad)
 }
 
 static LDAPMod **
-read_modify_body(FILE *s, GString *tmp1, GString *tmp2)
+ldif_read_modify_body(FILE *s, GString *tmp1, GString *tmp2)
 {
 	LDAPMod **result;
 	GPtrArray *mods = g_ptr_array_new();
 	GPtrArray *values;
 	LDAPMod *m = 0;
+	int rc;
 
 	for (;;) {
-		switch (read_line1(s, tmp1, tmp2)) {
+		switch (ldif_read_line(s, tmp1, tmp2)) {
 		case 0:
 			break;
 		case -1:
 			goto error;
-		case -2:
-			if (m) {
-				g_ptr_array_add(values, 0);
-				m->mod_bvalues = (void *) values->pdata;
-				g_ptr_array_free(values, 0);
-				values = 0;
-			}
-			goto done;
 		default:
 			abort();
 		}
-		if (tmp1->len) {
-			if (m) {
-				g_ptr_array_add(values, 0);
-				m->mod_bvalues = (void *) values->pdata;
-				g_ptr_array_free(values, 0);
-				values = 0;
-			}
-			values = g_ptr_array_new();
-			if ( !(m = ldapmod4line(tmp1->str, tmp2->str)))
+		if (tmp1->len == 0)
+			break;
+
+		values = g_ptr_array_new();
+		if ( !(m = ldif_ldapmod4line(tmp1->str, tmp2->str)))
+			goto error;
+		g_ptr_array_add(mods, m);
+
+		do {
+			switch ( rc = ldif_read_line1(s, tmp1, tmp2)) {
+			case 0:
+				if (strcmp(tmp1->str, m->mod_type)) {
+					fputs("Error: Attribute name mismatch"
+					      " in change-modify.",
+					      stderr);
+					goto error;
+				}
+				g_ptr_array_add(values, gstring2berval(tmp2));
+				break;
+			case -2:
+				break;
+			case -1:
 				goto error;
-			g_ptr_array_add(mods, m);
-		} else
-			g_ptr_array_add(values, gstring2berval(tmp2));
+			default:
+				abort();
+			}
+		} while (rc != -2);
+
+		g_ptr_array_add(values, 0);
+		m->mod_bvalues = (void *) values->pdata;
+		g_ptr_array_free(values, 0);
+		values = 0;
 	}
-done:
 
 	g_ptr_array_add(mods, 0);
 	result = (LDAPMod **) mods->pdata;
@@ -450,19 +464,29 @@ error:
  *   - Setze *key auf den Schluessel (falls key != 0).
  *   - Setze *dn auf den Distinguished Name (falls dn != 0).
  * EOF ist kein Fehler und liefert *key = 0 (falls key != 0);
+ *
+ * Der Schluessel ist dabei
+ *   "delete" fuer "changetype: delete"
+ *   "modify" fuer "changetype: modify"
+ *   "rename" fuer "changetype: moddn" und "changetype: modrdn",
+ *   "add" fuer "changetype: add" erlauben wir mal ganz frech ebenfalls
+ * oder andernfalls der Wert von "ldapvi-key: ...", das als erste
+ * Zeile im attrval-record erscheinen muss.
  */
 static int
-read_header(GString *tmp1, GString *tmp2,
+ldif_read_header(GString *tmp1, GString *tmp2,
 	    FILE *s, long offset, char **key, char **dn, long *pos)
 {
 	char **rdns = 0;
-
+	char *k;
+	char *d;
+	
 	if (offset != -1)
 		if (fseek(s, offset, SEEK_SET) == -1) syserr();
 	do {
 		if (pos)
 			if ( (*pos = ftell(s)) == -1) syserr();
-		if (read_line(s, tmp1, tmp2) == -1) return -1;
+		if (ldif_read_line(s, tmp1, tmp2) == -1) return -1;
 		if (tmp1->len == 0 && feof(s)) {
 			if (key) *key = 0;
 			return 0;
@@ -474,20 +498,50 @@ read_header(GString *tmp1, GString *tmp2,
 		fputs("Error: Invalid distinguished name string.\n", stderr);
 		return -1;
 	}
+	if (dn)
+		d = xdup(tmp2->str);
 
-	if (key) *key = xdup(tmp1->str);
-	if (dn) *dn = xdup(tmp2->str);
+	if (ldif_read_line(s, tmp1, tmp2) == -1) {
+		if (dn) free(d);
+		return -1;
+	}
+	if (!strcmp(tmp1->str, "ldapvi-key"))
+		k = tmp2->str;
+	else if (!strcmp(tmp1->str, "changetype")) {
+		if (!strcmp(tmp2->str, "modrdn"))
+			k = "rename";
+		else if (!strcmp(tmp2->str, "moddn"))
+			k = "rename";
+		else if (!strcmp(tmp2->str, "delete")
+			 || !strcmp(tmp2->str, "modify")
+			 || !strcmp(tmp2->str, "add"))
+			k = tmp2->str;
+		else {
+			fputs("Error: invalid changetype.\n", stderr);
+			if (dn) free(d);
+			return -1;
+		}
+	} else {
+		fputs("Error: Expected 'changetype:' or 'ldapvi-key:'"
+		      " after 'dn:'.\n",
+		      stderr);
+		if (dn) free(d);
+		return -1;
+	}
+
+	if (key) *key = xdup(k);
+	if (dn) *dn = d;
 	ldap_value_free(rdns);
 	return 0;
 }
 
 static int
-read_attrval_body(GString *tmp1, GString *tmp2, FILE *s, tentry *entry)
+ldif_read_attrval_body(GString *tmp1, GString *tmp2, FILE *s, tentry *entry)
 {
 	for (;;) {
 		tattribute *attribute;
 		
-		if (read_line(s, tmp1, tmp2) == -1)
+		if (ldif_read_line(s, tmp1, tmp2) == -1)
 			return -1;
 		if (!tmp1->len)
 			break;
@@ -508,7 +562,7 @@ read_attrval_body(GString *tmp1, GString *tmp2, FILE *s, tentry *entry)
  * EOF ist kein Fehler und liefert *key = 0 (falls key != 0);
  */
 int
-read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
+ldif_read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
 {
 	GString *tmp1 = g_string_new("");
 	GString *tmp2 = g_string_new("");
@@ -516,11 +570,11 @@ read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos)
 	char *k = 0;
 	tentry *e = 0;
 
-	int rc = read_header(tmp1, tmp2, s, offset, &k, &dn, pos);
+	int rc = ldif_read_header(tmp1, tmp2, s, offset, &k, &dn, pos);
 	if (rc || !k) goto cleanup;
 
 	e = entry_new(dn);
-	rc = read_attrval_body(tmp1, tmp2, s, e);
+	rc = ldif_read_attrval_body(tmp1, tmp2, s, e);
 	if (!rc) {
 		if (entry) {
 			*entry = e;
@@ -541,7 +595,9 @@ cleanup:
 }
 
 /*
- * Lies die erste Zeile eines beliebigen Records nach position `offset' in `s'.
+ * Lies die ersten beiden Zeilen eines beliebigen Records nach position
+ * `offset' in `s'.
+ *
  * Setze *pos (falls pos != 0).
  * Liefere 0 bei Erfolg, -1 sonst.
  * Bei Erfolg:
@@ -549,12 +605,12 @@ cleanup:
  *   - Setze *key auf den Schluessel (falls key != 0).
  */
 int
-peek_entry(FILE *s, long offset, char **key, long *pos)
+ldif_peek_entry(FILE *s, long offset, char **key, long *pos)
 {
 	GString *tmp1 = g_string_new("");
 	GString *tmp2 = g_string_new("");
 
-	int rc = read_header(tmp1, tmp2, s, offset, key, 0, pos);
+	int rc = ldif_read_header(tmp1, tmp2, s, offset, key, 0, pos);
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 	return rc;
@@ -569,21 +625,22 @@ peek_entry(FILE *s, long offset, char **key, long *pos)
  *   - *deleteoldrdn auf 1 oder 0;
  */
 int
-read_rename(FILE *s, long offset, char **dn1, char **dn2, int *deleteoldrdn)
+ldif_read_rename(FILE *s, long offset, char **dn1, char **dn2,
+		 int *deleteoldrdn)
 {
 	GString *tmp1 = g_string_new("");
 	GString *tmp2 = g_string_new("");
 	char *olddn;
 	char *newdn;
 
-	int rc = read_header(tmp1, tmp2, s, offset, 0, &olddn, 0);
+	int rc = ldif_read_header(tmp1, tmp2, s, offset, 0, &olddn, 0);
 	if (rc) {
 		g_string_free(tmp1, 1);
 		g_string_free(tmp2, 1);
 		return rc;
 	}
 
-	newdn = read_rename_body(s, tmp1, tmp2, deleteoldrdn);
+	newdn = ldif_read_rename_body(s, tmp1, tmp2, olddn, deleteoldrdn);
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 
@@ -597,20 +654,20 @@ read_rename(FILE *s, long offset, char **dn1, char **dn2, int *deleteoldrdn)
 }	
 
 int
-read_delete(FILE *s, long offset, char **dn)
+ldif_read_delete(FILE *s, long offset, char **dn)
 {
 	GString *tmp1 = g_string_new("");
 	GString *tmp2 = g_string_new("");
 	char *str;
 
-	int rc = read_header(tmp1, tmp2, s, offset, 0, &str, 0);
+	int rc = ldif_read_header(tmp1, tmp2, s, offset, 0, &str, 0);
 	if (rc) {
 		g_string_free(tmp1, 1);
 		g_string_free(tmp2, 1);
 		return rc;
 	}
 
-	rc = read_nothing(s, tmp1, tmp2);
+	rc = ldif_read_nothing(s, tmp1, tmp2);
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 
@@ -629,21 +686,21 @@ read_delete(FILE *s, long offset, char **dn)
  *   - Setze *mods auf die Aenderungen.
  */
 int
-read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
+ldif_read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
 {
 	GString *tmp1 = g_string_new("");
 	GString *tmp2 = g_string_new("");
 	char *d;
 	LDAPMod **m;
 
-	int rc = read_header(tmp1, tmp2, s, offset, 0, &d, 0);
+	int rc = ldif_read_header(tmp1, tmp2, s, offset, 0, &d, 0);
 	if (rc) {
 		g_string_free(tmp1, 1);
 		g_string_free(tmp2, 1);
 		return rc;
 	}
 
-	m = read_modify_body(s, tmp1, tmp2);
+	m = ldif_read_modify_body(s, tmp1, tmp2);
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 
@@ -666,99 +723,35 @@ read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
  *   0 on success
  *   -1 on parse error
  */
-/*
- * FIXME: Warum lesen wir hier nicht einfach bis zur naechsten leeren Zeile?
- */
 int
-skip_entry(FILE *s, long offset, char **key)
+ldif_skip_entry(FILE *s, long offset, char **key)
 {
 	GString *tmp1 = g_string_new("");
 	GString *tmp2 = g_string_new("");
 	char *k = 0;
 
-	int rc = read_header(tmp1, tmp2, s, offset, &k, 0, 0);
-	if (rc || !k)
-		;
-	else if (!strcmp(k, "modify")) {
-		LDAPMod **mods = read_modify_body(s, tmp1, tmp2);
-		if (mods)
-			ldap_mods_free(mods, 1);
-		else
-			rc = -1;
-	} else if (!strcmp(k, "rename")) {
-		int dor;
-		char *newdn = read_rename_body(s, tmp1, tmp2, &dor);
-		if (newdn)
-			free(newdn);
-		else
-			rc = -1;
-	} else if (!strcmp(k, "delete"))
-		rc = read_nothing(s, tmp1, tmp2);
-	else {
-		tentry *e = entry_new(xdup(""));
-		rc = read_attrval_body(tmp1, tmp2, s, e);
-		entry_free(e);
-	}	
-
-	if (key) *key = k; else free(k);
-	g_string_free(tmp1, 1);
-	g_string_free(tmp2, 1);
-	return rc;
-}
-
-static int
-read_profile_header(GString *tmp1, GString *tmp2, FILE *s, char **name)
-{
-	do {
-		if (read_line(s, tmp1, tmp2) == -1) return -1;
-		if (tmp1->len == 0 && feof(s)) {
-			*name = 0;
-			return 0;
+	int rc = ldif_read_header(tmp1, tmp2, s, offset, &k, 0, 0);
+	if (!rc && k)
+		for (;;) {
+			if (ldif_read_line1(s, tmp1, tmp2) == -1) {
+				rc = -1;
+				break;
+			}
+			if (tmp1->len == 0) {
+				if (key) *key = k; else free(k);
+				break;
+			}
 		}
-	} while (!tmp1->len);
-
-	if (strcmp(tmp1->str, "profile")) {
-		fprintf(stderr,
-			"Error: Expected 'profile' in configuration,"
-			" found '%s' instead.\n",
-			tmp1->str);
-		return -1;
-	}
-
-	*name = xdup(tmp2->str);
-	return 0;
-}
-
-int
-read_profile(FILE *s, tentry **entry)
-{
-	GString *tmp1 = g_string_new("");
-	GString *tmp2 = g_string_new("");
-	char *name;
-	tentry *e = 0;
-
-	int rc = read_profile_header(tmp1, tmp2, s, &name);
-	if (rc || !name) goto cleanup;
-
-	e = entry_new(name);
-	rc = read_attrval_body(tmp1, tmp2, s, e);
-	if (!rc) {
-		*entry = e;
-		e = 0;
-	}
-
-cleanup:
-	if (e) entry_free(e);
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 	return rc;
 }
 
-tparser ldapvi_parser = {
-	read_entry,
-	peek_entry,
-	skip_entry,
-	read_rename,
-	read_delete,
-	read_modify
+tparser ldif_parser = {
+	ldif_read_entry,
+	ldif_peek_entry,
+	ldif_skip_entry,
+	ldif_read_rename,
+	ldif_read_delete,
+	ldif_read_modify
 };

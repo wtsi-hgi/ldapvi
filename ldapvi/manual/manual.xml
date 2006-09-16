@@ -1039,6 +1039,58 @@ replace: cn
 dn: dc=acme,dc=com
 changetype: delete</code>
     </section>
+
+    <section name="ldif" title="Using LDIF syntax">
+      <p>
+	When invoked
+	using <a href="#parameter-ldif"><tt>--ldif</tt></a>, ldapvi will
+	use <a href="http://www.rfc-editor.org/rfc/rfc2849.txt">RFC
+	2849</a> syntax instead of its own special syntax.
+      </p>
+      <p>
+	However, the following exceptions apply:
+      </p>
+      <ul>
+	<li>
+	  Existing entries are presented for editing with an additional
+	  marker on the second line, just after the <tt>dn:</tt> line.
+	  This line states the (numeric) <em>key</em> that would appear
+	  in the header line if the entry had been printed in ldapvi
+	  syntax.
+	</li>
+	<li>
+	  New entries must have the same line, with <tt>add</tt> as
+	  their key.
+	</li>
+      </ul>
+      <p>
+	Examples:
+      </p>
+      <code># Existing entry
+dn: dc=lichteblau,dc=com
+<b>ldapvi-key: 0</b>
+objectClass: top
+objectClass: dcObject
+objectClass: organization
+o: lichteblau
+dc: lichteblau
+
+# New entry
+dn: cn=admin,dc=lichteblau,dc=com
+<b>ldapvi-key: add</b>
+objectClass: simpleSecurityObject
+objectClass: organizationalRole
+cn: admin
+description: LDAP administrator
+
+# Changerecord (standard LDIF syntax)
+dn: cn=blub4,dc=lichteblau,dc=com
+<b>changetype: modify</b>
+delete: seeAlso
+seeAlso: cn=dort
+-
+</code>
+    </section>
   </chapter>
   
 

@@ -188,6 +188,13 @@ dup2berval(char *data, int len)
 	return bv;
 }
 
+void
+xfree_berval(struct berval *bv)
+{
+	free(bv->bv_val);
+	free(bv);
+}
+
 struct berval *
 string2berval(GArray *s)
 {

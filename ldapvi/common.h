@@ -124,10 +124,32 @@ int attribute_remove_value(tattribute *a, char *data, int n);
 struct berval *string2berval(GArray *s);
 struct berval *gstring2berval(GString *s);
 char *array2string(GArray *av);
+void xfree_berval(struct berval *bv);
 
 /*
  * parse.c
  */
+typedef int (*parser_entry)(FILE *, long, char **, tentry **, long *);
+typedef int (*parser_peek)(FILE *, long, char **, long *);
+typedef int (*parser_skip)(FILE *, long, char **);
+typedef int (*parser_rename)(FILE *, long, char **, char **, int *);
+typedef int (*parser_delete)(FILE *, long, char **);
+typedef int (*parser_modify)(FILE *, long, char **, LDAPMod ***);
+
+typedef struct tparser {
+	parser_entry entry;
+
+	parser_peek peek;
+	parser_skip skip;
+
+	parser_rename rename;
+	parser_delete delete;
+	parser_modify modify;
+} tparser;
+
+extern tparser ldif_parser;
+extern tparser ldapvi_parser;
+
 int peek_entry(FILE *s, long offset, char **key, long *pos);
 int read_entry(FILE *s, long offset, char **key, tentry **entry, long *pos);
 int read_rename(FILE *s, long offset, char **dn1, char **dn2, int *);
@@ -153,8 +175,8 @@ typedef struct thandler {
 	handler_rename0 rename0;
 } thandler;
 
-LDAPMod **compare_entries(tentry *eclean, tentry *enew);
 int compare_streams(
+	tparser *parser,
 	thandler *handler,
 	void *userdata,
 	GArray *offsets,

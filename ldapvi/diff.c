@@ -100,7 +100,7 @@ note_attributes(tattribute *a1, tattribute *a2, GPtrArray *mods)
 	g_ptr_array_add(mods, m);
 }
 
-LDAPMod **
+static LDAPMod **
 compare_entries(tentry *eclean, tentry *enew)
 {
 	GPtrArray *mods = g_ptr_array_new();
@@ -324,13 +324,13 @@ update_clean_copy(GArray *offsets, char *key, FILE *s, tentry *cleanentry)
  *   -2 on handler error
  */
 static int
-process_immediate(thandler *handler, void *userdata, FILE *data,
+process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 		  long datapos, char *key)
 {
 	if (!strcmp(key, "add")) {
 		tentry *entry;
 		LDAPMod **mods;
-		if (read_entry(data, datapos, 0, &entry, 0) == -1)
+		if (p->entry(data, datapos, 0, &entry, 0) == -1)
 			return -1;
 		mods = entry2mods(entry);
 		if (handler->add(entry_dn(entry), mods, userdata) == -1) {
@@ -346,7 +346,7 @@ process_immediate(thandler *handler, void *userdata, FILE *data,
 		char *dn2;
 		int deleteoldrdn;
 		int rc;
-		if (read_rename(data, datapos, &dn1, &dn2, &deleteoldrdn) ==-1)
+		if (p->rename(data, datapos, &dn1, &dn2, &deleteoldrdn) ==-1)
 			return -1;
 		rc = handler->rename0(dn1, dn2, deleteoldrdn, userdata);
 		free(dn1);
@@ -356,7 +356,7 @@ process_immediate(thandler *handler, void *userdata, FILE *data,
 	} else if (!strcmp(key, "delete")) {
 		char *dn;
 		int rc;
-		if (read_delete(data, datapos, &dn) == -1)
+		if (p->delete(data, datapos, &dn) == -1)
 			return -1;
 		rc = handler->delete(dn, userdata);
 		free(dn);
@@ -365,7 +365,7 @@ process_immediate(thandler *handler, void *userdata, FILE *data,
 	} else if (!strcmp(key, "modify")) {
 		char *dn;
 		LDAPMod **mods;
-		if (read_modify(data, datapos, &dn, &mods) ==-1)
+		if (p->modify(data, datapos, &dn, &mods) ==-1)
 			return -1;
 		if (handler->change(dn, dn, mods, userdata) == -1) {
 			free(dn);
@@ -387,13 +387,9 @@ process_immediate(thandler *handler, void *userdata, FILE *data,
  *   -2 on handler error
  */
 static int
-process_next_entry(thandler *handler,
-		   void *userdata,
-		   GArray *offsets,
-		   FILE *clean,
-		   FILE *data,
-		   char *key,
-		   long datapos)
+process_next_entry(
+	tparser *p, thandler *handler, void *userdata, GArray *offsets,
+	FILE *clean, FILE *data, char *key, long datapos)
 {
 	tentry *entry = 0;
 	tentry *cleanentry = 0;
@@ -408,7 +404,7 @@ process_next_entry(thandler *handler,
 	n = strtol(key, &ptr, 10);
 	if (*ptr)
 		return process_immediate(
-			handler, userdata, data, datapos, key);
+			p, handler, userdata, data, datapos, key);
 	if (n < 0 || n >= offsets->len) {
 		fprintf(stderr, "Error: Invalid key: `%s'.\n", key);
 		goto cleanup;
@@ -420,7 +416,7 @@ process_next_entry(thandler *handler,
 	}
 
 	/* find precise position */
-	if (read_entry(clean, pos, 0, 0, &pos) == -1) abort();
+	if (p->entry(clean, pos, 0, 0, &pos) == -1) abort();
 	/* fast comparison */
 	if (n + 1 < offsets->len) {
 		long next = g_array_index(offsets, long, n + 1);
@@ -437,9 +433,9 @@ process_next_entry(thandler *handler,
 
 	/* if we get here, a quick scan found a difference in the
 	 * files, so we need to read the entries and compare them */
-	if (read_entry(data, datapos, 0, &entry, 0) == -1)
+	if (p->entry(data, datapos, 0, &entry, 0) == -1)
 		goto cleanup;
-	if (read_entry(clean, pos, 0, &cleanentry, 0) == -1) abort();
+	if (p->entry(clean, pos, 0, &cleanentry, 0) == -1) abort();
 
 	/* compare and update */
 	if ( (rename = strcmp(entry_dn(cleanentry), entry_dn(entry)))){
@@ -534,7 +530,8 @@ more_deletions:
  * return 0 on success, -2 else.
  */
 static int
-process_deletions(thandler *handler,
+process_deletions(tparser *p,
+		  thandler *handler,
 		  void *userdata,
 		  GArray *offsets,
 		  FILE *clean)
@@ -556,7 +553,7 @@ process_deletions(thandler *handler,
 		for (n = 0; n < offsets->len; n++) {
 			if ( (pos = g_array_index(offsets, long, n)) < 0)
 				continue;
-			if (read_entry(clean, pos, 0, &cleanentry, 0) == -1)
+			if (p->entry(clean, pos, 0, &cleanentry, 0) == -1)
 				abort();
 			switch (handler->delete(
 					entry_dn(cleanentry), userdata))
@@ -645,7 +642,8 @@ process_deletions(thandler *handler,
  * which the erroneous entry can be found.
  */
 int
-compare_streams(thandler *handler,
+compare_streams(tparser *p,
+		thandler *handler,
 		void *userdata,
 		GArray *offsets,
 		FILE *clean,
@@ -662,19 +660,19 @@ compare_streams(thandler *handler,
 
 		/* read updated entry */
 		if (key) { free(key); key = 0; }
-		if (peek_entry(data, -1, &key, &datapos) == -1) goto cleanup;
+		if (p->peek(data, -1, &key, &datapos) == -1) goto cleanup;
 		*error_position = datapos;
 		if (!key) break;
 
 		/* and do something with it */
 		if ( (rc = process_next_entry(
-			      handler, userdata, offsets, clean, data,
+			      p, handler, userdata, offsets, clean, data,
 			      key, datapos)))
 			goto cleanup;
 	}
 	if ( (*error_position = ftell(data)) == -1) syserr();
 
-	rc = process_deletions(handler, userdata, offsets, clean);
+	rc = process_deletions(p, handler, userdata, offsets, clean);
 
 cleanup:
 	if (key) free(key);

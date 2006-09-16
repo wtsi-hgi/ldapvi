@@ -20,7 +20,7 @@
 #include "common.h"
 
 static int
-compare(thandler *handler, void *userdata, GArray *offsets, 
+compare(tparser *p, thandler *handler, void *userdata, GArray *offsets, 
 	char *cleanname, char *dataname, long *error_position)
 {
 	FILE *clean, *data;
@@ -29,7 +29,7 @@ compare(thandler *handler, void *userdata, GArray *offsets,
 
 	if ( !(clean = fopen(cleanname, "r+"))) syserr();
 	if ( !(data = fopen(dataname, "r"))) syserr();
-	rc = compare_streams(handler, userdata, offsets, clean, data, &pos,
+	rc = compare_streams(p, handler, userdata, offsets, clean, data, &pos,
 			     error_position);
 	if (fclose(clean) == EOF) syserr();
 	if (fclose(data) == EOF) syserr();
@@ -532,7 +532,7 @@ login(LDAP *ld, char *user, char *password, int register_callback)
 }
 
 static int
-save_ldif(GArray *offsets, char *clean, char *data,
+save_ldif(tparser *parser, GArray *offsets, char *clean, char *data,
 	  char *server, char *user, int managedsait)
 {
 	int fd;
@@ -572,7 +572,7 @@ save_ldif(GArray *offsets, char *clean, char *data,
 	fputs(name->str, s);
 	fputs("\n", s);
 
-	compare(&ldif_handler, s, offsets, clean, data, 0);
+	compare(parser, &ldif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 
 	printf("Your changes have been saved to %s.\n", name->str);
@@ -580,20 +580,20 @@ save_ldif(GArray *offsets, char *clean, char *data,
 }
 
 static void
-view_ldif(char *dir, GArray *offsets, char *clean, char *data)
+view_ldif(tparser *parser, char *dir, GArray *offsets, char *clean, char *data)
 {
 	FILE *s;
 	char *name = append(dir, "/ldif");
 	if ( !(s = fopen(name, "w"))) syserr();
 	fputs("version: 1\n", s);
-	compare(&ldif_handler, s, offsets, clean, data, 0);
+	compare(parser, &ldif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 	view(name);
 	free(name);
 }
 
 static void
-view_vdif(char *dir, GArray *offsets, char *clean, char *data)
+view_vdif(tparser *parser, char *dir, GArray *offsets, char *clean, char *data)
 {
 	FILE *s;
 	static thandler vdif_handler = {
@@ -607,7 +607,7 @@ view_vdif(char *dir, GArray *offsets, char *clean, char *data)
 
 	if ( !(s = fopen(name, "w"))) syserr();
 	fputs("version: ldapvi\n", s);
-	compare(&vdif_handler, s, offsets, clean, data, 0);
+	compare(parser, &vdif_handler, s, offsets, clean, data, 0);
 	if (fclose(s) == EOF) syserr();
 	view(name);
 	free(name);
@@ -636,7 +636,7 @@ print_counter(int color, char *label, int value)
  * for catching syntax errors before real processing starts.
  */
 static int
-analyze_changes(GArray *offsets, char *clean, char *data)
+analyze_changes(tparser *p, GArray *offsets, char *clean, char *data)
 {
 	struct statistics st;
 	static thandler statistics_handler = {
@@ -651,7 +651,7 @@ analyze_changes(GArray *offsets, char *clean, char *data)
 
 retry:
 	memset(&st, 0, sizeof(st));
-	rc = compare(&statistics_handler, &st, offsets, clean, data, &pos);
+	rc = compare(p, &statistics_handler, &st, offsets, clean, data, &pos);
 
 	/* Success? */
 	if (rc == 0) {
@@ -689,8 +689,8 @@ retry:
 }
 
 static void
-commit(LDAP *ld, GArray *offsets, char *clean, char *data, LDAPControl **ctrls,
-       int verbose, int noquestions)
+commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
+       LDAPControl **ctrls, int verbose, int noquestions)
 {
 	struct ldapmodify_context ctx;
 	static thandler ldapmodify_handler = {
@@ -705,7 +705,8 @@ commit(LDAP *ld, GArray *offsets, char *clean, char *data, LDAPControl **ctrls,
 	ctx.verbose = verbose;
 	ctx.noquestions = noquestions;
 	
-	switch (compare(&ldapmodify_handler, &ctx, offsets, clean, data, 0)) {
+	switch (compare(p, &ldapmodify_handler, &ctx, offsets, clean, data, 0))
+	{
 	case 0:
 		puts("Done.");
 		exit(0);
@@ -763,7 +764,7 @@ ndecimalp(char *str)
 }
 
 void
-skip(char *dataname, GArray *offsets)
+skip(tparser *p, char *dataname, GArray *offsets)
 {
 	long pos;
 	char *key;
@@ -771,7 +772,7 @@ skip(char *dataname, GArray *offsets)
 	FILE *s;
 
 	if ( !(s = fopen(dataname, "r"))) syserr();
-	skip_entry(s, 0, &key);
+	p->skip(s, 0, &key);
 	if ( (pos = ftell(s)) == -1) syserr();
 	if (fclose(s) == EOF) syserr();
 
@@ -814,7 +815,7 @@ append_sort_control(LDAP *ld, GPtrArray *ctrls, char *keystring)
 }
 
 static GArray *
-read_offsets(char *file)
+read_offsets(tparser *p, char *file)
 {
 	GArray *offsets = g_array_new(0, 0, sizeof(long));
 	FILE *s;
@@ -827,7 +828,7 @@ read_offsets(char *file)
 		tentry *entry;
 
 		key = 0;
-		if (read_entry(s, -1, &key, &entry, &offset) == -1) exit(1);
+		if (p->entry(s, -1, &key, &entry, &offset) == -1) exit(1);
 		if (!key) break;
 
 		n = strtol(key, &ptr, 10);
@@ -849,10 +850,10 @@ read_offsets(char *file)
 }
 
 static void
-offline_diff(char *a, char *b)
+offline_diff(tparser *p, char *a, char *b)
 {
-	GArray *offsets = read_offsets(a);
-	compare(&ldif_handler, stdout, offsets, a, b, 0);
+	GArray *offsets = read_offsets(p, a);
+	compare(p, &ldif_handler, stdout, offsets, a, b, 0);
 	g_array_free(offsets, 1);
 }
 
@@ -1124,6 +1125,8 @@ main(int argc, const char **argv)
 	FILE *s;
 	FILE *source_stream = 0;
 	FILE *target_stream = 0;
+	tparser *parser;
+	int nlines;
 
 	cmdline.server = 0;
 	cmdline.basedns = g_ptr_array_new();
@@ -1155,7 +1158,9 @@ main(int argc, const char **argv)
 			fputs("wrong number of arguments to --diff\n", stderr);
 			usage(2, 1);
 		}
-		offline_diff((char *) argv[2], (char *) argv[3]);
+		offline_diff(&ldapvi_parser,
+			     (char *) argv[2],
+			     (char *) argv[3]);
 		exit(0);
 	}
 
@@ -1166,6 +1171,10 @@ main(int argc, const char **argv)
 		cmdline.noquestions = 1;
 		cmdline.progress = 0;
 	}
+	if (cmdline.ldif)
+		parser = &ldif_parser;
+	else
+		parser = &ldapvi_parser;
 	read_ldapvi_history();
 
 	ld = do_connect(cmdline.server,
@@ -1217,12 +1226,21 @@ main(int argc, const char **argv)
 	data = append(dir, "/data");
 
 	if ( !(s = fopen(data, "w"))) syserr();
-	if (print_binary_mode == PRINT_UTF8 && !cmdline.ldif)
+	nlines = 1;
+	if (print_binary_mode == PRINT_UTF8 && !cmdline.ldif) {
 		fputs("# -*- coding: utf-8 -*- vim:encoding=utf-8:\n", s);
-	fputs(cmdline.ldif
-	      ? "# http://www.rfc-editor.org/rfc/rfc2849.txt\n"
-	      : "# http://www.lichteblau.com/ldapvi/manual.xml#syntax\n",
-	      s);
+		nlines++;
+	}
+	if (cmdline.ldif) {
+		fputs("# http://www.rfc-editor.org/rfc/rfc2849.txt\n"
+		      "# http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax-ldif\n",
+		      s);
+		nlines += 2;
+	} else  {
+		fputs("# http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax\n",
+		      s);
+		nlines++;
+	}
 	if (cmdline.add || cmdline.mode != ldapvi_mode_edit) {
 		if (!cmdline.add)
 			add_changerecord(s, &cmdline);
@@ -1243,13 +1261,13 @@ main(int argc, const char **argv)
 		cp(data, clean, 0, 0);
 	}
 	if (!cmdline.noninteractive)
-		edit(data, cmdline.ldif ? 2 : 3);
+		edit(data, nlines);
 	else if (cmdline.mode == ldapvi_mode_edit)
 		yourfault("Cannot edit entries noninteractively.");
 
 	if (cmdline.noquestions) {
-		if (!analyze_changes(offsets, clean, data)) return 0;
-		commit(ld, offsets, clean, data, (void *) ctrls->pdata,
+		if (!analyze_changes(parser, offsets, clean, data)) return 0;
+		commit(parser, ld, offsets, clean, data, (void *) ctrls->pdata,
 		       cmdline.verbose, 1);
 		return 1;
 	}
@@ -1257,16 +1275,18 @@ main(int argc, const char **argv)
 	changed = 1;
 	for (;;) {
 		if (changed)
-			if (!analyze_changes(offsets, clean, data)) return 0;
+			if (!analyze_changes(parser, offsets, clean, data))
+				return 0;
 		changed = 0;
 		switch (choose("Action?", "yqQvVebrs?", "(Type '?' for help.)")) {
 		case 'y':
-			commit(ld, offsets, clean, data, (void *) ctrls->pdata,
-			       cmdline.verbose, 0);
+			commit(parser, ld, offsets, clean, data,
+			       (void *) ctrls->pdata, cmdline.verbose, 0);
 			changed = 1;
 			break; /* reached only on user error */
 		case 'q':
-			if (save_ldif(offsets, clean, data,
+			if (save_ldif(parser,
+				      offsets, clean, data,
 				      cmdline.server,
 				      cmdline.user,
 				      cmdline.managedsait))
@@ -1277,10 +1297,10 @@ main(int argc, const char **argv)
 			write_ldapvi_history();
 			return 0;
 		case 'v':
-			view_ldif(dir, offsets, clean, data);
+			view_ldif(parser, dir, offsets, clean, data);
 			break;
 		case 'V':
-			view_vdif(dir, offsets, clean, data);
+			view_vdif(parser, dir, offsets, clean, data);
 			break;
 		case 'e':
 			edit(data, 0);
@@ -1304,7 +1324,7 @@ main(int argc, const char **argv)
 			changed = 1; /* print stats again */
 			break;
 		case 's':
-			skip(data, offsets);
+			skip(parser, data, offsets);
 			changed = 1;
 			break;
 		case '?':
