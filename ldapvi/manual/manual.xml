@@ -478,12 +478,6 @@ wofuer was das doch gleich da?
       <parameter short="R" long="read" args="DN" brief="Read this entry">
 	A rather trivial option.  It means the same as:
 	<code>-b DN -s base '(objectclass=*)' + *</code>
-	<p>
-	  This option is useful when you want to read the root DSE with
-	  all its funny operational attributes but cannot remember how
-	  that is done.  Just&#160;do:
-	</p>
-	<code>-R ''</code>
       </parameter>
       <parameter short="v" long="verbose" brief="Note every update">
 	Print the distinguished name of every entry as it is being

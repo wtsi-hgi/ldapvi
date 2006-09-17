@@ -1,0 +1,104 @@
+div.sidebar {
+  float: right;
+  min-width: 15%;
+  padding: 0pt 5pt 5pt 5pt;
+  font-family: verdana, arial;
+}
+
+a {
+  text-decoration: none;
+  color: #000000;
+  border-bottom: 1px dotted black;
+  border-top: 1px solid white;
+  border-left: 1px solid white;
+  border-right: 1px solid white;
+}
+
+.sidebar a {
+  border-top: 1px solid #eeeeee;
+  border-left: 1px solid #eeeeee;
+  border-right: 1px solid #eeeeee;
+}
+
+a:hover {
+  color: #000000;
+  border: 1px solid black;
+}
+
+div.sidebar-title {
+  font-weight: bold;
+  color: #ffffff;
+  background-color: #000000; /* #0000aa */
+  border: solid #000000; /* #0000aa */
+  border-top-width: 1px;
+  border-bottom-width: 0px;
+  border-left-width: 4px;
+  border-right-width: 0px;
+  margin: 0em 2pt 1px 2em;
+}
+
+div.sidebar-title a {
+  color: #ffffff;
+}
+
+div.sidebar-main {
+  background-color: #eeeeee;
+  border: solid #000000; /* #0000aa */
+  border-top-width: 0px;
+  border-bottom-width: 0px;
+  border-left-width: 4px;
+  border-right-width: 0px;
+  margin: 0em 2pt 1em 2em;
+  padding-top: 2px;
+  padding-left: 2px;
+}
+
+div.sidebar ul {
+  list-style-type: square;
+  padding: 0pt 0pt 0pt 1em;
+  margin: 0 0 1em;
+}
+
+div.sidebar ul.sub {
+  list-style-type: disc;
+  padding: 0pt 0pt 0pt 1em;
+  margin: 0 0 1em;
+}
+
+body {
+  color: #000000;
+  background-color: #ffffff;
+  margin-right: 0pt;
+  margin-bottom: 10%;
+  margin-left: 40px;
+  padding-left: 30px;
+  font-family: verdana, arial;
+  background-image: url(ldapvi.png);
+  background-position: top left;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+}
+
+h1,h2 {
+  margin-left: -30px;
+}
+
+h3 {
+  margin-top: 1.5em;
+}
+
+.code {
+  border: solid 1px #d0d0d0;
+  padding: 1em;
+  margin-right: 10%;
+}
+
+.def {
+  background-color: #ddddff;
+  font-weight: bold;
+}
+
+.nomargin {
+  margin-bottom: 0;
+  margin-top: 0;
+}

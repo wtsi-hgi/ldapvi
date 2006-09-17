@@ -1,0 +1,39 @@
+<?xml-stylesheet type="text/xsl" href="ldapvi.xsl"?>
+<page title="ldapvi" style="ldapvi.css">
+  <intro>
+    <p>
+      <tt>ldapvi</tt> is an interactive LDAP client for Unix terminals.
+      Using it, you can update LDAP entries with a text editor.<br/>
+      Think of it as <tt>vipw</tt>(1) for LDAP.
+    </p>
+    <p>
+      ldapvi was written by David Lichteblau.
+    </p>
+  </intro>
+
+  <section title="Documentation">
+    <p>
+      Read
+      the <a
+      href="http://www.lichteblau.com/ldapvi/manual/manual.xml">manual</a>.
+    </p>
+  </section>
+
+  <section title="Download">
+    <p>
+      <b>Tarball:</b> <a href="download/ldapvi-1.5.tar.gz">ldapvi-1.5.tar.gz</a>.<br/>
+      Older versions: 1.[<a href="download/ldapvi-1.4.tar.gz">4</a><a href="download/ldapvi-1.3.tar.gz">3</a><a href="download/ldapvi-1.2.tar.gz">2</a><a href="download/ldapvi-1.1.tar.gz">1</a><a href="download/ldapvi-1.0.tar.gz">0</a>]<br/>
+      Cygwin binary: <a href="download/ldapvi.exe">ldapvi.exe</a><br/>
+      Changelog: <a href="ldapvi-news.txt">NEWS</a><br/>
+      <b>git:</b> <a href="http://www.lichteblau.com/git/ldapvi.git">http://www.lichteblau.com/git/ldapvi.git</a>
+    </p>
+  </section>
+
+  <section title="Bugs">
+    <p>
+      Please send bug reports to the mailing list:
+      <a href="mailto:ldapvi@lists.askja.de">ldapvi@lists.askja.de</a>
+      (<a href="https://lists.askja.de/listinfo/ldapvi">mailman</a>)
+    </p>
+  </section>
+</page>

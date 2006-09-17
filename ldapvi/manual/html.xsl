@@ -7,6 +7,8 @@
     </xsl:copy>
   </xsl:template>
 
+  <xsl:template match="processing-instruction('xml-stylesheet')"/>
+
   <xsl:template match="manual">
     <html>
       <head>
