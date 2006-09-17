@@ -592,17 +592,18 @@ view_ldif(tparser *parser, char *dir, GArray *offsets, char *clean, char *data)
 	free(name);
 }
 
+static thandler vdif_handler = {
+	vdif_change,
+	vdif_rename,
+	vdif_add,
+	vdif_delete,
+	vdif_rename0
+};
+
 static void
 view_vdif(tparser *parser, char *dir, GArray *offsets, char *clean, char *data)
 {
 	FILE *s;
-	static thandler vdif_handler = {
-		vdif_change,
-		vdif_rename,
-		vdif_add,
-		vdif_delete,
-		vdif_rename0
-	};
 	char *name = append(dir, "/vdif");
 
 	if ( !(s = fopen(name, "w"))) syserr();
@@ -740,7 +741,7 @@ fixup_streams(FILE **source, FILE **target)
 
 	if (!isatty(0)) {
 		/* user has redirected stdout */
-		int in = dup(fileno(stdout));
+		int in = dup(fileno(stdin));
 		if (in == -1) syserr();
 		*source = fdopen(in, "r");
 		if (getty(0) == -1) rc = -1;
@@ -1111,6 +1112,205 @@ add_template(LDAP *ld,  FILE *s, GPtrArray *wanted, char *base)
 	}
 }
 
+static void
+parse_file(FILE *in, tparser *p, thandler *h, void *userdata, int addp)
+{
+	char *key = 0;
+
+	for (;;) {
+		long pos;
+		char *k;
+
+		if (p->peek(in, -1, &key, &pos) == -1) exit(1);
+		if (!key) break;
+
+		k = key;
+		if (!strcmp(key, "add") && !addp)
+			k = "replace";
+		if (process_immediate(p, h, userdata, in, pos, k) < 0)
+			exit(1);
+
+		free(key);
+	}
+}
+
+static int
+write_file_header(FILE *s, cmdline *cmdline)
+{
+	int nlines = 0;
+	
+	if (print_binary_mode == PRINT_UTF8 && !cmdline->ldif) {
+		fputs("# -*- coding: utf-8 -*- vim:encoding=utf-8:\n", s);
+		nlines++;
+	}
+	if (cmdline->ldif) {
+		fputs("# " RFC_2849_URL "\n" "# " MANUAL_LDIF_URL "\n", s);
+		nlines += 2;
+	} else  {
+		fputs("# " MANUAL_SYNTAX_URL "\n", s);
+		nlines++;
+	}
+
+	return nlines;
+}
+
+static int
+can_seek(FILE *s)
+{
+	long pos;
+	if ( (pos = ftell(s)) == -1) return 0;
+	if (fseek(s, pos, SEEK_SET) == -1) return 0;
+	return 1;
+}
+
+static GArray *
+main_write_files(
+	LDAP *ld, cmdline *cmdline,
+	char *clean, char *data, GPtrArray *ctrls,
+	FILE *source,
+	int *nlines)
+{
+	FILE *s;
+	int line;
+	GArray *offsets;
+
+	if ( !(s = fopen(data, "w"))) syserr();
+	line = write_file_header(s, cmdline);
+
+	if (cmdline->mode == ldapvi_mode_in) {
+		tparser *p = &ldif_parser;
+		thandler *h = &vdif_handler;
+		FILE *tmp = 0;
+
+		if (cmdline->in_file) {
+			if ( !(source = fopen(cmdline->in_file, "r+")))
+				syserr();
+		} else {
+			if (!source)
+				source = stdin;
+			if (!can_seek(source)) {
+				/* einfach clean als tmpfile nehmen */
+				if ( !(tmp = fopen(clean, "w+"))) syserr();
+				fcopy(source, tmp);
+				if (fseek(tmp, 0, SEEK_SET) == -1) syserr();
+				source = tmp;
+				/* source war stdin, kann offen bleiben */
+			}
+		}
+
+		if (cmdline->ldif) h = &ldif_handler;
+		if (cmdline->ldapvi) p = &ldapvi_parser;
+		parse_file(source, p, h, s, cmdline->ldapmodify_add);
+
+		if (cmdline->in_file)
+			if (fclose(source) == EOF) syserr();
+		if (tmp)
+			if (unlink(clean) == -1) syserr();
+		if (fclose(s) == EOF) syserr();
+		cp("/dev/null", clean, 0, 0);
+		offsets = g_array_new(0, 0, sizeof(long));
+	} else if (cmdline->classes || cmdline->mode != ldapvi_mode_edit) {
+		if (!cmdline->classes)
+			add_changerecord(s, cmdline);
+		else if (cmdline->classes->len) {
+			char *base = 0;
+			if (cmdline->basedns->len > 0)
+				base = g_ptr_array_index(cmdline->basedns, 0);
+			add_template(ld, s, cmdline->classes, base);
+		} else
+			fputc('\n', s);
+		if (fclose(s) == EOF) syserr();
+		cp("/dev/null", clean, 0, 0);
+		offsets = g_array_new(0, 0, sizeof(long));
+	} else {
+		offsets = search(s, ld, cmdline, (void *) ctrls->pdata, 0,
+				 cmdline->ldif);
+		if (fclose(s) == EOF) syserr();
+		cp(data, clean, 0, 0);
+	}
+
+	*nlines = line;
+	return offsets;
+}
+
+static int
+main_loop(LDAP *ld, cmdline *cmdline,
+	  tparser *parser, GArray *offsets, char *clean, char *data,
+	  GPtrArray *ctrls, char *dir)
+{
+	int changed = 1;
+
+	for (;;) {
+		if (changed)
+			if (!analyze_changes(parser, offsets, clean, data))
+				return 0;
+		changed = 0;
+		switch (choose("Action?", "yqQvVebrs?", "(Type '?' for help.)")) {
+		case 'y':
+			commit(parser, ld, offsets, clean, data,
+			       (void *) ctrls->pdata, cmdline->verbose, 0);
+			changed = 1;
+			break; /* reached only on user error */
+		case 'q':
+			if (save_ldif(parser,
+				      offsets, clean, data,
+				      cmdline->server,
+				      cmdline->user,
+				      cmdline->managedsait))
+				break;
+			write_ldapvi_history();
+			return 0;
+		case 'Q':
+			write_ldapvi_history();
+			return 0;
+		case 'v':
+			view_ldif(parser, dir, offsets, clean, data);
+			break;
+		case 'V':
+			view_vdif(parser, dir, offsets, clean, data);
+			break;
+		case 'e':
+			edit(data, 0);
+			changed = 1;
+			break;
+		case 'b':
+			cmdline->user = login(ld, 0, 0, 1);
+			changed = 1; /* print stats again */
+			break;
+		case 'r':
+			ldap_unbind_s(ld);
+			ld = do_connect(
+				cmdline->server,
+				cmdline->user,
+				cmdline->password,
+				cmdline->referrals,
+				cmdline->starttls,
+				cmdline->tls,
+				cmdline->deref);
+			printf("Connected to %s.\n", cmdline->server);
+			changed = 1; /* print stats again */
+			break;
+		case 's':
+			skip(parser, data, offsets);
+			changed = 1;
+			break;
+		case '?':
+			puts("Commands:\n"
+			     "  y -- commit changes\n"
+			     "  q -- save changes as LDIF and quit\n"
+			     "  Q -- discard changes and quit\n"
+			     "  v -- view changes as LDIF change records\n"
+			     "  V -- view changes as ldapvi change records\n"
+			     "  e -- open editor again\n"
+			     "  b -- ask for user name and rebind\n"
+			     "  r -- reconnect to server\n"
+			     "  s -- skip one entry\n"
+			     "  ? -- this help");
+			break;
+		}
+	}
+}
+
 int
 main(int argc, const char **argv)
 {
@@ -1121,37 +1321,12 @@ main(int argc, const char **argv)
 	char *clean;
 	char *data;
 	GArray *offsets;
-	int changed;
-	FILE *s;
 	FILE *source_stream = 0;
 	FILE *target_stream = 0;
 	tparser *parser;
 	int nlines;
 
-	cmdline.server = 0;
-	cmdline.basedns = g_ptr_array_new();
-	cmdline.scope = LDAP_SCOPE_SUBTREE;
-	cmdline.filter = 0;
-	cmdline.attrs = 0;
-	cmdline.user = 0;
-	cmdline.password = 0;
-	cmdline.progress = 1;
-	cmdline.referrals = 1;
-	cmdline.add = 0;
-	cmdline.managedsait = 0;
-	cmdline.sortkeys = 0;
-	cmdline.starttls = 0;
-	cmdline.tls = LDAP_OPT_X_TLS_TRY;
-	cmdline.deref = LDAP_DEREF_NEVER;
-	cmdline.verbose = 0;
-	cmdline.noquestions = 0;
-	cmdline.noninteractive = 0;
-	cmdline.discover = 0;
-	cmdline.config = 0;
-	cmdline.ldif = 0;
-	cmdline.ldapvi = 0;
-	cmdline.mode = ldapvi_mode_edit;
-	cmdline.rename_dor = 0;
+	init_cmdline(&cmdline);
 
 	if (argc >= 2 && !strcmp(argv[1], "--diff")) {
 		if (argc != 4) {
@@ -1206,8 +1381,8 @@ main(int argc, const char **argv)
 	if (cmdline.mode == ldapvi_mode_out
 	    || (cmdline.mode == ldapvi_mode_edit && target_stream))
 	{
-		if (cmdline.add)
-			yourfault("Cannot --add entries noninteractively.");
+		if (cmdline.classes)
+			yourfault("Cannot edit entry templates noninteractively.");
 		if (!target_stream)
 			target_stream = stdout;
 		search(target_stream, ld, &cmdline, (void *) ctrls->pdata, 1,
@@ -1225,44 +1400,19 @@ main(int argc, const char **argv)
 	clean = append(dir, "/clean");
 	data = append(dir, "/data");
 
-	if ( !(s = fopen(data, "w"))) syserr();
-	nlines = 1;
-	if (print_binary_mode == PRINT_UTF8 && !cmdline.ldif) {
-		fputs("# -*- coding: utf-8 -*- vim:encoding=utf-8:\n", s);
-		nlines++;
-	}
-	if (cmdline.ldif) {
-		fputs("# http://www.rfc-editor.org/rfc/rfc2849.txt\n"
-		      "# http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax-ldif\n",
-		      s);
-		nlines += 2;
-	} else  {
-		fputs("# http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax\n",
-		      s);
-		nlines++;
-	}
-	if (cmdline.add || cmdline.mode != ldapvi_mode_edit) {
-		if (!cmdline.add)
-			add_changerecord(s, &cmdline);
-		else if (cmdline.add->len) {
-			char *base = 0;
-			if (cmdline.basedns->len > 0)
-				base = g_ptr_array_index(cmdline.basedns, 0);
-			add_template(ld, s, cmdline.add, base);
-		} else
-			fputc('\n', s);
-		if (fclose(s) == EOF) syserr();
-		cp("/dev/null", clean, 0, 0);
-		offsets = g_array_new(0, 0, sizeof(long));
-	} else {
-		offsets = search(s, ld, &cmdline, (void *) ctrls->pdata, 0,
-				 cmdline.ldif);
-		if (fclose(s) == EOF) syserr();
-		cp(data, clean, 0, 0);
-	}
-	if (!cmdline.noninteractive)
-		edit(data, nlines);
-	else if (cmdline.mode == ldapvi_mode_edit)
+	offsets = main_write_files(
+		ld, &cmdline, clean, data, ctrls, source_stream,
+		&nlines);
+
+	if (!cmdline.noninteractive) {
+		if (target_stream) {
+			FILE *tmp = fopen(data, "r");
+			if (!tmp) syserr();
+			fcopy(tmp, target_stream);
+			exit(0);
+		}
+		edit(data, nlines + 1);
+	} else if (cmdline.mode == ldapvi_mode_edit)
 		yourfault("Cannot edit entries noninteractively.");
 
 	if (cmdline.noquestions) {
@@ -1272,74 +1422,6 @@ main(int argc, const char **argv)
 		return 1;
 	}
 
-	changed = 1;
-	for (;;) {
-		if (changed)
-			if (!analyze_changes(parser, offsets, clean, data))
-				return 0;
-		changed = 0;
-		switch (choose("Action?", "yqQvVebrs?", "(Type '?' for help.)")) {
-		case 'y':
-			commit(parser, ld, offsets, clean, data,
-			       (void *) ctrls->pdata, cmdline.verbose, 0);
-			changed = 1;
-			break; /* reached only on user error */
-		case 'q':
-			if (save_ldif(parser,
-				      offsets, clean, data,
-				      cmdline.server,
-				      cmdline.user,
-				      cmdline.managedsait))
-				break;
-			write_ldapvi_history();
-			return 0;
-		case 'Q':
-			write_ldapvi_history();
-			return 0;
-		case 'v':
-			view_ldif(parser, dir, offsets, clean, data);
-			break;
-		case 'V':
-			view_vdif(parser, dir, offsets, clean, data);
-			break;
-		case 'e':
-			edit(data, 0);
-			changed = 1;
-			break;
-		case 'b':
-			cmdline.user = login(ld, 0, 0, 1);
-			changed = 1; /* print stats again */
-			break;
-		case 'r':
-			ldap_unbind_s(ld);
-			ld = do_connect(
-				cmdline.server,
-				cmdline.user,
-				cmdline.password,
-				cmdline.referrals,
-				cmdline.starttls,
-				cmdline.tls,
-				cmdline.deref);
-			printf("Connected to %s.\n", cmdline.server);
-			changed = 1; /* print stats again */
-			break;
-		case 's':
-			skip(parser, data, offsets);
-			changed = 1;
-			break;
-		case '?':
-			puts("Commands:\n"
-			     "  y -- commit changes\n"
-			     "  q -- save changes as LDIF and quit\n"
-			     "  Q -- discard changes and quit\n"
-			     "  v -- view changes as LDIF change records\n"
-			     "  V -- view changes as ldapvi change records\n"
-			     "  e -- open editor again\n"
-			     "  b -- ask for user name and rebind\n"
-			     "  r -- reconnect to server\n"
-			     "  s -- skip one entry\n"
-			     "  ? -- this help");
-			break;
-		}
-	}
+	return main_loop(
+		ld, &cmdline, parser, offsets, clean, data, ctrls, dir);
 }

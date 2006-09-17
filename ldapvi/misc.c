@@ -67,6 +67,21 @@ cp(char *src, char *dst, off_t skip, int append)
 	if (close(fddst) == -1) syserr();
 }
 
+void
+fcopy(FILE *src, FILE *dst)
+{
+	int n;
+	char buf[4096];
+
+	for (;;) {
+		if ( (n = fread(buf, 1, sizeof(buf), src)) == 0) {
+			if (feof(src)) break;
+			syserr();
+		}
+		if (fwrite(buf, 1, n, dst) != n) syserr();
+	}
+}
+
 char
 choose(char *prompt, char *charbag, char *help)
 {

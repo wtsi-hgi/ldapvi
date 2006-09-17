@@ -8,7 +8,8 @@ New features:
   - new command line arguments --in, --out, --delete, --rename
   - LDIF support in the editor
     * new command line arguments --ldif, --ldapvi, --ldapsearch, --ldapmodify,
-      --ldapdelete, --ldapmoddn
+      --ldapdelete, --ldapmoddn, --add
+    * incompatible change: old command line argument --add renamed to --empty
   - UTF-8 support; new command line option --encoding
   - use libreadline to read the user name
   - support for configuration files ~/.ldapvirc or /etc/ldapvi.conf in

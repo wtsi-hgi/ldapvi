@@ -55,9 +55,9 @@ ldif_read_ad(FILE *s, GString *lhs)
 				if ( (c = fgetc(s)) == ' ')
 					/* folded line */
 					break;
+				ungetc(c, s);
 				if (lhs->len == 1 && lhs->str[0] == '-')
 					return -2;
-				ungetc(c, s);
 			}
 			fputs("Error: Unexpected EOL.\n", stderr);
 			return -1;
@@ -341,7 +341,7 @@ ldif_read_nothing(FILE *s, GString *tmp1, GString *tmp2)
 }
 
 static LDAPMod *
-ldif_ldapmod4line(char *ad, char *action)
+ldif_ldapmod4line(char *action, char *ad)
 {
 	LDAPMod *m;
 	int op;
@@ -353,6 +353,7 @@ ldif_ldapmod4line(char *ad, char *action)
 	else if (!strcmp(action, "replace"))
 		op = LDAP_MOD_REPLACE;
 	else {
+		fputs(action, stderr);
 		fputs("Error: Invalid change marker.\n", stderr);
 		return 0;
 	}
@@ -451,11 +452,12 @@ error:
  */
 static int
 ldif_read_header(GString *tmp1, GString *tmp2,
-	    FILE *s, long offset, char **key, char **dn, long *pos)
+		 FILE *s, long offset, char **key, char **dn, long *pos)
 {
 	char **rdns = 0;
 	char *k;
 	char *d;
+	long pos2;
 	
 	if (offset != -1)
 		if (fseek(s, offset, SEEK_SET) == -1) syserr();
@@ -484,6 +486,8 @@ ldif_read_header(GString *tmp1, GString *tmp2,
 	if (dn)
 		d = xdup(tmp2->str);
 
+	if ( (pos2 = ftell(s)) == -1) syserr();
+
 	if (ldif_read_line(s, tmp1, tmp2) == -1) {
 		if (dn) free(d);
 		return -1;
@@ -509,11 +513,8 @@ ldif_read_header(GString *tmp1, GString *tmp2,
 		if (dn) free(d);
 		return -1;
 	} else {
-		fputs("Error: Expected 'changetype:' or 'ldapvi-key:'"
-		      " after 'dn:'.\n",
-		      stderr);
-		if (dn) free(d);
-		return -1;
+		k = "add";
+		if (fseek(s, pos2, SEEK_SET) == -1) syserr();
 	}
 
 	if (key) *key = xdup(k);

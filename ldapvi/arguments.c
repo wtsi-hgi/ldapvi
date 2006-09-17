@@ -43,12 +43,14 @@
 "  -S, --sort KEYS        Sort control (critical).\n"			      \
 "\n"									      \
 "Miscellaneous options:\n"						      \
-"  -A, --add              Don't search, start with empty file.  See -o.\n"    \
+"      --add              (Only with --in, --ldapmodify:)\n"                  \
+"                         Treat attrval records as new entries to add.\n"     \
 "  -o, --class OBJCLASS   Class to add.  Can be repeated.  Implies -A.\n"     \
 "  -c, --config           Print parameters in ldap.conf syntax.\n"	      \
 "      --deleteoldrdn     (Only with --rename:) Delete the old RDN.\n"	      \
 "  -a, --deref            never|searching|finding|always\n"		      \
 "  -d, --discover         Auto-detect naming contexts.              [2]\n"    \
+"  -A, --empty            Don't search, start with empty file.  See -o.\n"    \
 "      --encoding [ASCII|UTF-8|binary]\n"				      \
 "                         The encoding to allow.  Default is UTF-8.\n"	      \
 "  -H, --help             This help.\n"					      \
@@ -90,7 +92,7 @@ enum ldapvi_option_numbers {
 	OPTION_TLS = 1000, OPTION_ENCODING, OPTION_LDIF, OPTION_LDAPVI,
 	OPTION_OUT, OPTION_IN, OPTION_DELETE, OPTION_RENAME, OPTION_MODRDN,
 	OPTION_NOQUESTIONS, OPTION_LDAPSEARCH, OPTION_LDAPMODIFY,
-	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN
+	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN, OPTION_ADD
 };
 
 static struct poptOption options[] = {
@@ -107,7 +109,7 @@ static struct poptOption options[] = {
 	{"profile",	'p', POPT_ARG_STRING, 0, 'p', 0, 0},
 	{"tls",		  0, POPT_ARG_STRING, 0, OPTION_TLS, 0, 0},
 	{"encoding",	  0, POPT_ARG_STRING, 0, OPTION_ENCODING, 0, 0},
-	{"add",		'A', 0, 0, 'A', 0, 0},
+	{"empty",	'A', 0, 0, 'A', 0, 0},
 	{"config",	'c', 0, 0, 'c', 0, 0},
 	{"discover",	'd', 0, 0, 'd', 0, 0},
 	{"quiet",	'q', 0, 0, 'q', 0, 0},
@@ -118,6 +120,7 @@ static struct poptOption options[] = {
 	{"version",	'V', 0, 0, 'V', 0, 0},
 	{"noninteractive", '!', 0, 0, '!', 0, 0},
 	{"deleteoldrdn", 'r', 0, 0, 'r', 0, 0},
+	{"add",		  0, 0, 0, OPTION_ADD, 0, 0},
 	{"noquestions",   0, 0, 0, OPTION_NOQUESTIONS, 0, 0},
 	{"ldif",	  0, 0, 0, OPTION_LDIF, 0, 0},
 	{"ldapvi",	  0, 0, 0, OPTION_LDAPVI, 0, 0},
@@ -141,6 +144,36 @@ usage(int fd, int rc)
 	if (fd != -1) dup2(fd, 1);
 	puts(USAGE);
 	if (rc != -1) exit(rc);
+}
+
+void
+init_cmdline(cmdline *cmdline)
+{
+	cmdline->server = 0;
+	cmdline->basedns = g_ptr_array_new();
+	cmdline->scope = LDAP_SCOPE_SUBTREE;
+	cmdline->filter = 0;
+	cmdline->attrs = 0;
+	cmdline->user = 0;
+	cmdline->password = 0;
+	cmdline->progress = 1;
+	cmdline->referrals = 1;
+	cmdline->classes = 0;
+	cmdline->ldapmodify_add = 0;
+	cmdline->managedsait = 0;
+	cmdline->sortkeys = 0;
+	cmdline->starttls = 0;
+	cmdline->tls = LDAP_OPT_X_TLS_TRY;
+	cmdline->deref = LDAP_DEREF_NEVER;
+	cmdline->verbose = 0;
+	cmdline->noquestions = 0;
+	cmdline->noninteractive = 0;
+	cmdline->discover = 0;
+	cmdline->config = 0;
+	cmdline->ldif = 0;
+	cmdline->ldapvi = 0;
+	cmdline->mode = ldapvi_mode_edit;
+	cmdline->rename_dor = 0;
 }
 
 static void
@@ -185,13 +218,13 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		result->progress = 0;
 		break;
 	case 'A':
-		if (!result->add)
-			result->add = g_ptr_array_new();
+		if (!result->classes)
+			result->classes = g_ptr_array_new();
 		break;
 	case 'o':
-		if (!result->add)
-			result->add = g_ptr_array_new();
-		adjoin_str(result->add, arg);
+		if (!result->classes)
+			result->classes = g_ptr_array_new();
+		adjoin_str(result->classes, arg);
 		break;
 	case 'C':
 		if (!strcasecmp(arg, "yes"))
@@ -255,6 +288,9 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		break;
 	case OPTION_LDAPVI:
 		result->ldapvi = 1;
+		break;
+	case OPTION_ADD:
+		result->ldapmodify_add = 1;
 		break;
 
 	case OPTION_LDAPSEARCH:

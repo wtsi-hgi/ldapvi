@@ -323,7 +323,7 @@ update_clean_copy(GArray *offsets, char *key, FILE *s, tentry *cleanentry)
  *   -1 on syntax error
  *   -2 on handler error
  */
-static int
+int
 process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 		  long datapos, char *key)
 {
@@ -334,6 +334,29 @@ process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 			return -1;
 		mods = entry2mods(entry);
 		if (handler->add(entry_dn(entry), mods, userdata) == -1) {
+			ldap_mods_free(mods, 1);
+			entry_free(entry);
+			return -2;
+		}
+		ldap_mods_free(mods, 1);
+		entry_free(entry);
+		entry = 0;
+	} else if (!strcmp(key, "replace")) {
+		tentry *entry;
+		LDAPMod **mods;
+		int i;
+		if (p->entry(data, datapos, 0, &entry, 0) == -1)
+			return -1;
+		mods = entry2mods(entry);
+		for (i = 0; mods[i]; i++) {
+			LDAPMod *mod = mods[i];
+			mod->mod_op &= LDAP_MOD_BVALUES;
+			mod->mod_op |= LDAP_MOD_REPLACE;
+		}
+		if (handler->change(entry_dn(entry),
+				    entry_dn(entry),
+				    mods,
+				    userdata) == -1) {
 			ldap_mods_free(mods, 1);
 			entry_free(entry);
 			return -2;

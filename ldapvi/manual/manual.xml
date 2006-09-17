@@ -392,7 +392,19 @@ wofuer was das doch gleich da?
     </section>
 
     <section name="misc" title="Miscellaneous options">
-      <parameter short="A" long="add" brief="Start with empty file">
+      <parameter long="add"
+		 brief="Treat attrval records as new entries to add.">
+	<p>
+	  This option applies only to
+	  the <a
+	  href="#parameter-in"><tt>--in</tt></a>/<a
+	  href="#parameter-ldapmodify"><tt>--ldapmodify</tt></a> mode:
+	</p>
+	<p>
+	  Add new entries (default would be to replace existing attributes).
+	</p>
+      </parameter>
+      <parameter short="A" long="empty" brief="Start with empty file">
 	Do not search, start with an empty file instead.
 	<p>
 	  This is the little brother of
@@ -401,10 +413,8 @@ wofuer was das doch gleich da?
 	  option, adding new entries.
 	</p>
 	<p>
-	  Although it retains its old name associating it
-	  with <tt>add</tt> records, this option is still useful because
-	  allows the interactive entry
-	  of <tt>delete</tt>, <tt>modify</tt>, or <tt>rename</tt>
+	  However, it is still useful because allows the interactive
+	  entry of <tt>delete</tt>, <tt>modify</tt>, or <tt>rename</tt>
 	  changerecords.
 	</p>
       </parameter>
@@ -1042,24 +1052,21 @@ changetype: delete</code>
 	2849</a> syntax instead of its own special syntax.
       </p>
       <p>
-	However, the following exceptions apply:
+	However, there is a special marker in each entry:
       </p>
-      <ul>
-	<li>
-	  Existing entries are presented for editing with an additional
-	  marker on the second line, just after the <tt>dn:</tt> line.
-	  This line states the (numeric) <em>key</em> that would appear
-	  in the header line if the entry had been printed in ldapvi
-	  syntax.
-	</li>
-	<li>
-	  New entries must have the same line, with <tt>add</tt> as
-	  their key.
-	</li>
-	<li>
-	  <tt>control:</tt> is not supported.
-	</li>
-      </ul>
+      <p>
+	Existing entries are presented for editing with an additional
+	marker on the second line, just after the <tt>dn:</tt> line.
+	This line states the (numeric) <em>key</em> that would appear in
+	the header line if the entry had been printed in ldapvi syntax.
+      </p>
+      <p>
+	(New entries can have the same line, with <tt>add</tt> as their
+	key, but records with neither <tt>ldapvi-key</tt>
+	nor <tt>changetype</tt> are automatically assumed to be new
+	entries to add.)
+      </p>
+      <p>Also, <tt>control:</tt> is not supported.</p>
       <p>
 	Examples:
       </p>
@@ -1074,7 +1081,8 @@ dc: lichteblau
 
 # New entry
 dn: cn=admin,dc=lichteblau,dc=com
-<b>ldapvi-key: add</b>
+# next line is optional
+<i>ldapvi-key: add</i>
 objectClass: simpleSecurityObject
 objectClass: organizationalRole
 cn: admin
@@ -1082,7 +1090,7 @@ description: LDAP administrator
 
 # Changerecord (standard LDIF syntax)
 dn: cn=blub4,dc=lichteblau,dc=com
-<b>changetype: modify</b>
+<i>changetype: modify</i>
 delete: seeAlso
 seeAlso: cn=dort
 -

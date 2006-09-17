@@ -33,6 +33,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#define MANUAL_SYNTAX_URL					\
+"http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax"
+#define RFC_2849_URL				\
+"http://www.rfc-editor.org/rfc/rfc2849.txt"
+#define MANUAL_LDIF_URL							\
+"http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax-ldif"
+
 /*
  * error.c
  */
@@ -59,7 +66,8 @@ typedef struct cmdline {
 	char *password;
 	int progress;
 	int referrals;
-	GPtrArray *add;
+	GPtrArray *classes;
+	int ldapmodify_add;
 	int managedsait;
 	char *sortkeys;
 	int starttls;
@@ -80,6 +88,7 @@ typedef struct cmdline {
 	char *in_file;
 } cmdline;
 
+void init_cmdline(cmdline *cmdline);
 void parse_arguments(
 	int argc, const char **argv, cmdline *result, GPtrArray *ctrls);
 void usage(int fd, int rc);
@@ -189,6 +198,8 @@ enum frob_rdn_mode {
 	FROB_RDN_CHECK, FROB_RDN_REMOVE, FROB_RDN_ADD, FROB_RDN_CHECK_NONE
 };
 int frob_rdn(tentry *entry, char *dn, int mode);
+int process_immediate(tparser *, thandler *, void *, FILE *, long, char *);
+
 
 /*
  * misc.c
@@ -196,6 +207,7 @@ int frob_rdn(tentry *entry, char *dn, int mode);
 int carray_cmp(GArray *a, GArray *b);
 int carray_ptr_cmp(const void *aa, const void *bb);
 void cp(char *src, char *dst, off_t skip, int append);
+void fcopy(FILE *src, FILE *dst);
 char choose(char *prompt, char *charbag, char *help);
 void edit_pos(char *pathname, long pos);
 void edit(char *pathname, long line);
