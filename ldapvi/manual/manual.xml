@@ -1056,6 +1056,9 @@ changetype: delete</code>
 	  New entries must have the same line, with <tt>add</tt> as
 	  their key.
 	</li>
+	<li>
+	  <tt>control:</tt> is not supported.
+	</li>
       </ul>
       <p>
 	Examples:

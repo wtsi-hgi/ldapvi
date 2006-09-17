@@ -467,6 +467,13 @@ read_header(GString *tmp1, GString *tmp2,
 			if (key) *key = 0;
 			return 0;
 		}
+		if (!strcmp(tmp1->str, "version")) {
+			if (strcmp(tmp2->str, "ldapvi")) {
+				fputs("Error: Invalid file format.\n", stderr);
+				return -1;
+			}
+			tmp1->len = 0;
+		}
 	} while (!tmp1->len);
 
 	rdns = ldap_explode_dn(tmp2->str, 0);

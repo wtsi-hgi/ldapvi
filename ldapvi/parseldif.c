@@ -262,30 +262,6 @@ ldif_read_line(FILE *s, GString *name, GString *value)
 	return rc;
 }
 
-static int
-ldif_read_dnspec(FILE *s, GString *tmp, GString *dn)
-{
-	if (ldif_read_line(s, tmp, dn) == -1)
-		return -1;
-	if (strcmp(tmp->str, "dn")) {
-		fputs("Error: Expected dn-spec.\n", stderr);
-		return -1;
-	}
-	return 0;
-}
-
-static int
-ldif_read_changetype(FILE *s, GString *tmp, GString *changetype)
-{
-	if (ldif_read_line(s, tmp, changetype) == -1)
-		return -1;
-	if (strcmp(tmp->str, "changetype")) {
-		fputs("Error: Expected changetype: line.\n", stderr);
-		return -1;
-	}
-	return 0;
-}
-
 static char *
 ldif_read_rename_body(FILE *s,
 		      GString *tmp1, GString *tmp2,
@@ -326,11 +302,11 @@ ldif_read_rename_body(FILE *s,
 	
 	if (ldif_read_line(s, tmp1, tmp2) == -1) return 0;
 	if (tmp1->len == 0) {
-		char *komma = strchr(dn, ',');
+		char *komma = strchr(olddn, ',');
 		if (!komma) {
-			free(newrdn);
-			fputs("Error: Cannot rename Root DSE.\n", stderr);
-			return 0;
+			/* probably cannot rename an entry directly below
+			 * the Root DSE, but let's play along for now */
+			return newrdn;
 		}
 		dn = xalloc(i + strlen(komma) + 1);
 		strcpy(dn, newrdn);
@@ -491,6 +467,13 @@ ldif_read_header(GString *tmp1, GString *tmp2,
 			if (key) *key = 0;
 			return 0;
 		}
+		if (!strcmp(tmp1->str, "version")) {
+			if (strcmp(tmp2->str, "1")) {
+				fputs("Error: Invalid file format.\n", stderr);
+				return -1;
+			}
+			tmp1->len = 0;
+		}
 	} while (!tmp1->len);
 
 	rdns = ldap_explode_dn(tmp2->str, 0);
@@ -521,6 +504,10 @@ ldif_read_header(GString *tmp1, GString *tmp2,
 			if (dn) free(d);
 			return -1;
 		}
+	} else if (!strcmp(tmp1->str, "control")) {
+		fputs("Error: Sorry, 'control:' not supported.\n", stderr);
+		if (dn) free(d);
+		return -1;
 	} else {
 		fputs("Error: Expected 'changetype:' or 'ldapvi-key:'"
 		      " after 'dn:'.\n",

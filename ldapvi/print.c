@@ -384,9 +384,11 @@ print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
 
 	fprintf(s, "deleteoldrdn: %d\n", !!deleteoldrdn);
 
-	sup = rdns2gstring(newrdns + 1);
-	print_ldif_line(s, "newsuperior", sup->str, sup->len);
-	g_string_free(sup, 1);
+	if (newrdns[1]) {
+		sup = rdns2gstring(newrdns + 1);
+		print_ldif_line(s, "newsuperior", sup->str, sup->len);
+		g_string_free(sup, 1);
+	}
 
 	if (ferror(s)) syserr();
 	ldap_value_free(newrdns);
