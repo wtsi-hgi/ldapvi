@@ -358,7 +358,7 @@ wofuer was das doch gleich da?
       </parameter>
     </section>
 
-    <section name="cool" title="Cool parameters">
+    <section name="handy" title="Handy parameters">
       <parameter short="d" long="discover" brief="Auto-detect naming contexts">
 	With this option, ldapvi will first read the root DSE, then repeat
 	the search for each naming context found and present the
@@ -891,8 +891,8 @@ surname:; M&#252;ller
 
 <b># backslash escapes newline</b>
 mail:; From david@lichteblau.com Mon Apr  1 00:11:22 2006\
-Return-path:; &lt;david@lichteblau.com&gt;\
-Envelope-to:; lists@mail.askja.de
+Return-path: &lt;david@lichteblau.com&gt;\
+Envelope-to: lists@mail.askja.de
 
 <b># No LDIF line folding, however, so this value contains a space:</b>
 cn:; David\
@@ -1182,7 +1182,7 @@ ad-value = value-spec  ;parsing as an AttributeDescription</code>
   <chapter name="bugs" title="Reporting bugs">
     <p>
       Please report bugs to the ldapvi mailing list for archival
-      purposes.  (I am good at ignoring private mail.)
+      purposes.
     </p>
     <p>
       Address: <a href="mailto:ldapvi@lists.askja.de">ldapvi@lists.askja.de</a>

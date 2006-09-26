@@ -615,7 +615,6 @@ process_deletions(tparser *p,
 
 /*
  * Die compare_streams-Schleife ist das Herz von ldapvi.
- * XXX Und entsprechend lang isse geworden.  Aufraeumen!
  *
  * Read two ldapvi data files in streams CLEAN and DATA and compare them.
  *
