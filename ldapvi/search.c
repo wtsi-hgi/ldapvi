@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -199,7 +199,7 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
 	return offsets;
 }
 
-static LDAPMessage *
+LDAPMessage *
 get_entry(LDAP *ld, char *dn, LDAPMessage **result)
 {
 	LDAPMessage *entry;
@@ -224,66 +224,6 @@ discover_naming_contexts(LDAP *ld, GPtrArray *basedns)
 		char **ptr = values;
 		for (ptr = values; *ptr; ptr++)
 			g_ptr_array_add(basedns, xdup(*ptr));
-		ldap_value_free(values);
-	}
-	ldap_msgfree(result);
-}
-
-void
-get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributetypes)
-{
-	LDAPMessage *result, *entry;
-	char **values;
-	char *subschema_dn;
-	int code;
-	const char *errp;
-	char *attrs[2] = {"subschemaSubentry", 0};
-
-	if (ldap_search_s(ld, "", LDAP_SCOPE_BASE, 0, attrs, 0, &result))
-		ldaperr(ld, "ldap_search");
-	if ( !(entry = ldap_first_entry(ld, result)))
-		ldaperr(ld, "ldap_first_entry");
-	values = ldap_get_values(ld, entry, "subschemaSubentry");
-	if (!values) {
-		ldap_msgfree(result);
-		return;
-	}
-	subschema_dn = xdup(*values);
-	ldap_value_free(values);
-	ldap_msgfree(result);
-
-	entry = get_entry(ld, subschema_dn, &result);
-	free(subschema_dn);
-	values = ldap_get_values(ld, entry, "objectClasses");
-	if (values) {
-		char **ptr = values;
-		for (ptr = values; *ptr; ptr++) {
-			struct ldap_objectclass *cls
-				= ldap_str2objectclass(
-					*ptr, &code, &errp, 0);
-			if (cls)
-                                g_ptr_array_add(objectclasses, cls);
-                        else
-                                fprintf(stderr,
-                                        "Warning: Cannot parse class: %s\n",
-                                        ldap_scherr2str(code));
-		}
-		ldap_value_free(values);
-	}
-	values = ldap_get_values(ld, entry, "attributeTypes");
-	if (values) {
-		char **ptr = values;
-		for (ptr = values; *ptr; ptr++) {
-			struct ldap_attributetype *at
-				= ldap_str2attributetype(
-					*ptr, &code, &errp, 0);
-			if (at)
-                                g_ptr_array_add(attributetypes, at);
-                        else
-                                fprintf(stderr,
-                                        "Warning: Cannot parse type: %s\n",
-                                        ldap_scherr2str(code));
-		}
 		ldap_value_free(values);
 	}
 	ldap_msgfree(result);

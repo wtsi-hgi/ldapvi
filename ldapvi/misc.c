@@ -1,4 +1,4 @@
-/* Copyright (c) 2003,2004,2005 David Lichteblau
+/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -330,12 +330,24 @@ xdup(char *str)
 	return result;
 }
 
-void
+int
 adjoin_str(GPtrArray *strs, char *str)
 {
 	int i;
 	for (i = 0; i < strs->len; i++)
 		if (!strcmp(str, g_ptr_array_index(strs, i)))
-			return;
+			return -1;
 	g_ptr_array_add(strs, str);
+	return i;
+}
+
+int
+adjoin_ptr(GPtrArray *a, void *p)
+{
+	int i;
+	for (i = 0; i < a->len; i++)
+		if (g_ptr_array_index(a, i) == p)
+			return -1;
+	g_ptr_array_add(a, p);
+	return i;
 }

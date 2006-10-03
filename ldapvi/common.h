@@ -32,6 +32,7 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #define MANUAL_SYNTAX_URL					\
 "http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax"
@@ -220,7 +221,8 @@ char *get_password();
 char *append(char *a, char *b);
 void *xalloc(size_t size);
 char *xdup(char *str);
-void adjoin_str(GPtrArray *strs, char *str);
+int adjoin_str(GPtrArray *, char *);
+int adjoin_ptr(GPtrArray *, void *);
 
 /*
  * print.c
@@ -245,13 +247,45 @@ void print_ldif_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
 void print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key);
 
 /*
+ * schema.c
+ */
+typedef struct tschema {
+	GHashTable *classes;
+	GHashTable *types;
+} tschema;
+
+typedef struct tentroid {
+	tschema *schema;
+	GPtrArray *classes;
+	GPtrArray *must;
+	GPtrArray *may;
+	struct ldap_objectclass *structural;
+	GString *comment;
+	GString *error;
+} tentroid;
+
+char *objectclass_name(struct ldap_objectclass *);
+char *attributetype_name(struct ldap_attributetype *);
+
+void init_schema(LDAP *ld, tschema *schema);
+struct ldap_objectclass *get_objectclass(tschema *, char *);
+struct ldap_attributetype *get_attributetype(tschema *, char *);
+
+tentroid *entroid_new(tschema *);
+void entroid_free(tentroid *);
+struct ldap_objectclass *entroid_get_objectclass(tentroid *, char *);
+struct ldap_attributetype *entroid_get_attributetype(tentroid *, char *);
+struct ldap_objectclass *entroid_request_class(tentroid *, char *);
+int compute_entroid(tentroid *);
+
+/*
  * search.c
  */
 void discover_naming_contexts(LDAP *ld, GPtrArray *basedns);
-void get_schema(LDAP *ld, GPtrArray *objectclasses, GPtrArray *attributes);
 GArray *search(
 	FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
 	int ldif);
+LDAPMessage *get_entry(LDAP *ld, char *dn, LDAPMessage **result);
 
 /*
  * port.c
