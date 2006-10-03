@@ -54,7 +54,7 @@
 "      --encoding [ASCII|UTF-8|binary]\n"				      \
 "                         The encoding to allow.  Default is UTF-8.\n"	      \
 "  -H, --help             This help.\n"					      \
-"  -m, --may              Show missing optional attributes as comments.\n     \
+"  -m, --may              Show missing optional attributes as comments.\n"    \
 "  -M, --managedsait      manageDsaIT control (critical).\n"		      \
 "  -!, --noquestions      Don't ask for confirmation.\n"		      \
 "  -q, --quiet            Disable progress output.\n"			      \
