@@ -87,6 +87,7 @@ typedef struct cmdline {
 	char *rename_new;
 	int rename_dor;
 	char *in_file;
+	int schema_comments;
 } cmdline;
 
 void init_cmdline(cmdline *cmdline);
@@ -225,28 +226,6 @@ int adjoin_str(GPtrArray *, char *);
 int adjoin_ptr(GPtrArray *, void *);
 
 /*
- * print.c
- */
-typedef enum t_print_binary_mode {
-	PRINT_ASCII, PRINT_UTF8, PRINT_JUNK
-} t_print_binary_mode;
-extern t_print_binary_mode print_binary_mode;
-
-void print_entry_object(FILE *s, tentry *entry, char *key);
-void print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods);
-void print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
-void print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods);
-void print_ldapvi_delete(FILE *s, char *dn);
-void print_ldapvi_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
-void print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key);
-void print_ldif_modify(FILE *s, char *dn, LDAPMod **mods);
-void print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
-void print_ldif_add(FILE *s, char *dn, LDAPMod **mods);
-void print_ldif_delete(FILE *s, char *dn);
-void print_ldif_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
-void print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key);
-
-/*
  * schema.c
  */
 typedef struct tschema {
@@ -267,16 +246,40 @@ typedef struct tentroid {
 char *objectclass_name(struct ldap_objectclass *);
 char *attributetype_name(struct ldap_attributetype *);
 
-void init_schema(LDAP *ld, tschema *schema);
+tschema *schema_new(LDAP *ld);
 struct ldap_objectclass *get_objectclass(tschema *, char *);
 struct ldap_attributetype *get_attributetype(tschema *, char *);
 
 tentroid *entroid_new(tschema *);
+void entroid_reset(tentroid *);
 void entroid_free(tentroid *);
 struct ldap_objectclass *entroid_get_objectclass(tentroid *, char *);
 struct ldap_attributetype *entroid_get_attributetype(tentroid *, char *);
 struct ldap_objectclass *entroid_request_class(tentroid *, char *);
+void entroid_remove_ad(tentroid *, char *);
 int compute_entroid(tentroid *);
+
+/*
+ * print.c
+ */
+typedef enum t_print_binary_mode {
+	PRINT_ASCII, PRINT_UTF8, PRINT_JUNK
+} t_print_binary_mode;
+extern t_print_binary_mode print_binary_mode;
+
+void print_entry_object(FILE *s, tentry *entry, char *key);
+void print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods);
+void print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
+void print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods);
+void print_ldapvi_delete(FILE *s, char *dn);
+void print_ldapvi_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
+void print_entry_message(FILE *, LDAP *, LDAPMessage *, int key, tentroid *);
+void print_ldif_modify(FILE *s, char *dn, LDAPMod **mods);
+void print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
+void print_ldif_add(FILE *s, char *dn, LDAPMod **mods);
+void print_ldif_delete(FILE *s, char *dn);
+void print_ldif_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
+void print_ldif_message(FILE *, LDAP *, LDAPMessage *, int key, tentroid *);
 
 /*
  * search.c

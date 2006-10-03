@@ -389,6 +389,10 @@ wofuer was das doch gleich da?
 	  using <a href="#parameter-base"><tt>--base</tt></a>.
 	</p>
       </parameter>
+      <parameter short="m" long="may" brief="Show schema comments.">
+	Show schema comments for existing entries.  Specificially, show
+	optional attributes as comments, if not present.
+      </parameter>
     </section>
 
     <section name="misc" title="Miscellaneous options">

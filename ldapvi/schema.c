@@ -94,8 +94,8 @@ strcasehash(gconstpointer v)
 
 /* fixme: wollen wir statt exit() einen fehlercode vorsehen, damit der
  * aufrufer seine eigene meldung ausgeben kann? */
-void
-init_schema(LDAP *ld, tschema *schema)
+tschema *
+schema_new(LDAP *ld)
 {
 	LDAPMessage *result, *entry;
 	char **values;
@@ -103,15 +103,21 @@ init_schema(LDAP *ld, tschema *schema)
 	int code;
 	const char *errp;
 	char *attrs[2] = {"subschemaSubentry", 0};
-	
-	if (ldap_search_s(ld, "", LDAP_SCOPE_BASE, 0, attrs, 0, &result))
-		ldaperr(ld, "ldap_search");
-	if ( !(entry = ldap_first_entry(ld, result)))
-		ldaperr(ld, "ldap_first_entry");
+	tschema *schema;
+
+	if (ldap_search_s(ld, "", LDAP_SCOPE_BASE, 0, attrs, 0, &result)) {
+		ldap_perror(ld, "ldap_search");
+		return 0;
+	}
+	if ( !(entry = ldap_first_entry(ld, result))) {
+		ldap_perror(ld, "ldap_first_entry");
+		return 0;
+	}
 	values = ldap_get_values(ld, entry, "subschemaSubentry");
 	if (!values) {
+		fputs("subschemaSubentry attribute not found.", stderr);
 		ldap_msgfree(result);
-		return;
+		return 0;
 	}
 	subschema_dn = xdup(*values);
 	ldap_value_free(values);
@@ -121,6 +127,7 @@ init_schema(LDAP *ld, tschema *schema)
 	free(subschema_dn);
 	values = ldap_get_values(ld, entry, "objectClasses");
 
+	schema = xalloc(sizeof(tschema));
 	schema->classes = g_hash_table_new(strcasehash, strcaseequal);
 	schema->types = g_hash_table_new(strcasehash, strcaseequal);
 
@@ -156,6 +163,7 @@ init_schema(LDAP *ld, tschema *schema)
 		ldap_value_free(values);
 	}
 	ldap_msgfree(result);
+	return schema;
 }
 
 tentroid *
@@ -170,6 +178,17 @@ entroid_new(tschema *schema)
 	result->comment = g_string_sized_new(0);
 	result->error = g_string_sized_new(0);
 	return result;
+}
+
+void
+entroid_reset(tentroid *entroid)
+{
+	g_ptr_array_set_size(entroid->classes, 0);
+	g_ptr_array_set_size(entroid->must, 0);
+	g_ptr_array_set_size(entroid->may, 0);
+	entroid->structural = 0;
+	g_string_truncate(entroid->comment, 0);
+	g_string_truncate(entroid->error, 0);
 }
 
 void
@@ -219,6 +238,29 @@ entroid_request_class(tentroid *entroid, char *name)
 	return cls;
 }
 
+void
+entroid_remove_ad(tentroid *entroid, char *ad)
+{
+	struct ldap_attributetype *at;
+	char *name;
+	char *s = strchr(ad, ';');
+
+	if (s) {
+		int n = s - ad;
+		name = xalloc(n);
+		memcpy(name, ad, n);
+	} else
+		name = ad;
+
+	if ( !(at = entroid_get_attributetype(entroid, name)))
+		return;
+	g_ptr_array_remove(entroid->must, at);
+	g_ptr_array_remove(entroid->may, at);
+
+	if (name != ad)
+		free(name);
+}
+
 static int
 compute_entroid_1(tentroid *entroid, struct ldap_objectclass *cls)
 {
@@ -240,7 +282,6 @@ compute_entroid_1(tentroid *entroid, struct ldap_objectclass *cls)
 		g_string_append_c(entroid->comment, '\n');
 	}
 	for (ptr = cls->oc_at_oids_must; ptr && *ptr; ptr++) {
-		int i;
 		struct ldap_attributetype *at
 			= entroid_get_attributetype(entroid, *ptr);
 		if (!at) return -1;

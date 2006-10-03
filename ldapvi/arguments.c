@@ -54,6 +54,7 @@
 "      --encoding [ASCII|UTF-8|binary]\n"				      \
 "                         The encoding to allow.  Default is UTF-8.\n"	      \
 "  -H, --help             This help.\n"					      \
+"  -m, --may              Show missing optional attributes as comments.\n     \
 "  -M, --managedsait      manageDsaIT control (critical).\n"		      \
 "  -!, --noquestions      Don't ask for confirmation.\n"		      \
 "  -q, --quiet            Disable progress output.\n"			      \
@@ -115,6 +116,7 @@ static struct poptOption options[] = {
 	{"quiet",	'q', 0, 0, 'q', 0, 0},
 	{"verbose",	'v', 0, 0, 'v', 0, 0},
 	{"managedsait",	'M', 0, 0, 'M', 0, 0},
+	{"may",		'm', 0, 0, 'm', 0, 0},
 	{"starttls",	'Z', 0, 0, 'Z', 0, 0},
 	{"help",	'H', 0, 0, 'H', 0, 0},
 	{"version",	'V', 0, 0, 'V', 0, 0},
@@ -174,6 +176,7 @@ init_cmdline(cmdline *cmdline)
 	cmdline->ldapvi = 0;
 	cmdline->mode = ldapvi_mode_edit;
 	cmdline->rename_dor = 0;
+	cmdline->schema_comments = 0;
 }
 
 static void
@@ -235,6 +238,9 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 			fprintf(stderr, "--chase invalid%s\n", arg);
 			usage(2, 1);
 		}
+		break;
+	case 'm':
+		result->schema_comments = 1;
 		break;
 	case 'M':
 		result->managedsait = 1;

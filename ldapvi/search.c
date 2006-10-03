@@ -112,15 +112,54 @@ log_reference(LDAP *ld, LDAPMessage *reference, FILE *s)
 	ldap_value_free(refs);
 }
 
+static tentroid *
+entroid_set_message(LDAP *ld, tentroid *entroid, LDAPMessage *entry)
+{
+	struct berval **values = ldap_get_values_len(ld, entry, "objectClass");
+	struct berval **ptr;
+
+	if (!values || !*values)
+		return 0;
+
+	entroid_reset(entroid);
+	for (ptr = values; *ptr; ptr++) {
+		struct berval *value = *ptr;
+		struct ldap_objectclass *cls
+			= entroid_request_class(entroid, value->bv_val);
+		if (!cls) {
+			g_string_append(entroid->comment, "# ERROR: ");
+			g_string_append(entroid->comment, entroid->error->str);
+			ldap_value_free_len(values);
+			return entroid;
+		}
+	}
+	ldap_value_free_len(values);
+
+	if (compute_entroid(entroid) == -1) {
+		g_string_append(entroid->comment, "# ERROR: ");
+		g_string_append(entroid->comment, entroid->error->str);
+		return entroid;
+	}
+	return entroid;
+}
+
 static void
 search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
-	       cmdline *cmdline, LDAPControl **ctrls, int notty, int ldif)
+	       cmdline *cmdline, LDAPControl **ctrls, int notty, int ldif,
+	       tschema *schema)
 {
 	int msgid;
 	LDAPMessage *result, *entry;
 	int start = offsets->len;
 	int n = start;
 	long offset;
+	tentroid *entroid;
+	tentroid *e;
+
+	if (schema)
+		entroid = entroid_new(schema);
+	else
+		entroid = 0;
 
 	if (ldap_search_ext(
 		    ld, base,
@@ -138,11 +177,13 @@ search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
 			offset = ftell(s);
 			if (offset == -1 && !notty) syserr();
 			g_array_append_val(offsets, offset);
+			if (entroid)
+				e = entroid_set_message(ld, entroid, entry);
 			if (ldif)
 				print_ldif_message(
-					s, ld, entry, notty ? -1 : n);
+					s, ld, entry, notty ? -1 : n, entroid);
 			else
-				print_entry_message(s, ld, entry, n);
+				print_entry_message(s, ld, entry, n, entroid);
 			n++;
 			if (cmdline->progress && !notty)
 				update_progress(ld, n, entry);
@@ -165,6 +206,8 @@ search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
 		default:
 			abort();
 		}
+	if (entroid)
+		entroid_free(entroid);
 }
 
 GArray *
@@ -174,16 +217,28 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
 	GArray *offsets = g_array_new(0, 0, sizeof(long));
 	GPtrArray *basedns = cmdline->basedns;
 	int i;
+	tschema *schema;
+
+	if (cmdline->schema_comments) {
+		schema = schema_new(ld);
+		if (!schema) {
+			fputs("Error: Failed to read schema, giving up.",
+			      stderr);
+			exit(1);
+		}
+	} else
+		schema = 0;
 
 	if (basedns->len == 0)
-		search_subtree(s, ld, offsets, 0, cmdline, ctrls, notty, ldif);
+		search_subtree(s, ld, offsets, 0, cmdline, ctrls, notty, ldif,
+			       schema);
 	else
 		for (i = 0; i < basedns->len; i++) {
 			char *base = g_ptr_array_index(basedns, i);
 			if (cmdline->progress && (basedns->len > 1))
 				fprintf(stderr, "Searching in: %s\n", base);
 			search_subtree(s, ld, offsets, base, cmdline, ctrls,
-				       notty, ldif);
+				       notty, ldif, schema);
 		}
 
 	if (!offsets->len) {

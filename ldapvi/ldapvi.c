@@ -986,14 +986,17 @@ static void
 add_template(LDAP *ld, FILE *s, GPtrArray *wanted, char *base)
 {
 	int i;
-	tschema schema;
 	tentroid *entroid;
 	struct ldap_objectclass *cls;
 	struct ldap_attributetype *at;
+	tschema *schema = schema_new(ld);
 
-	init_schema(ld, &schema);
+	if (!schema) {
+		fputs("Error: Failed to read schema, giving up.", stderr);
+		exit(1);
+	}
 
-	entroid = entroid_new(&schema);
+	entroid = entroid_new(schema);
 	for (i = 0; i < wanted->len; i++) {
 		char *name = g_ptr_array_index(wanted, i);
 		cls = entroid_request_class(entroid, name);

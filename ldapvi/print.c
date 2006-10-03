@@ -415,8 +415,25 @@ print_ldif_delete(FILE *s, char *dn)
 	if (ferror(s)) syserr();
 }
 
+static void
+print_message_entroid(FILE *s, tentroid *entroid)
+{
+	int i;
+	struct ldap_attributetype *at;
+	for (i = 0; i < entroid->must->len; i++) {
+		at = g_ptr_array_index(entroid->must, i);
+		fprintf(s, "# required attribute not shown: %s\n",
+			attributetype_name(at));
+	}
+	for (i = 0; i < entroid->may->len; i++) {
+		at = g_ptr_array_index(entroid->may, i);
+		fprintf(s, "#%s: \n", attributetype_name(at));
+	}
+}
+
 void
-print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
+print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key,
+		    tentroid *entroid)
 {
 	char *dn, *ad;
 	BerElement *ber;
@@ -426,6 +443,8 @@ print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
 	print_attrval(s, dn, strlen(dn), 1);
 	ldap_memfree(dn);
 	fputc('\n', s);
+	if (entroid)
+		fputs(entroid->comment->str, s);
 
 	for (ad = ldap_first_attribute(ld, entry, &ber);
 	     ad;
@@ -435,6 +454,9 @@ print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
 		struct berval **ptr;
 
 		if (!values) continue;
+		if (entroid)
+			entroid_remove_ad(entroid, ad);
+
 		for (ptr = values; *ptr; ptr++) {
 			fputs(ad, s);
 			print_attrval(s, (*ptr)->bv_val, (*ptr)->bv_len, 0);
@@ -444,16 +466,22 @@ print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
 		ldap_value_free_len(values);
 	}
 	ber_free(ber, 0);
+
+	if (entroid)
+		print_message_entroid(s, entroid);
 	if (ferror(s)) syserr();
 }
 
 void
-print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
+print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key,
+		   tentroid *entroid)
 {
 	char *dn, *ad;
 	BerElement *ber;
 
 	fputc('\n', s);
+	if (entroid)
+		fputs(entroid->comment->str, s);
 
 	dn = ldap_get_dn(ld, entry);
 	print_ldif_line(s, "dn", dn, -1);
@@ -467,10 +495,14 @@ print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key)
 	     ad = ldap_next_attribute(ld, entry, ber))
 	{
 		struct berval **values = ldap_get_values_len(ld, entry, ad);
+		if (entroid) entroid_remove_ad(entroid, ad);
 		print_ldif_bervals(s, ad, values);
 		ldap_memfree(ad);
 		ldap_value_free_len(values);
 	}
 	ber_free(ber, 0);
+
+	if (entroid)
+		print_message_entroid(s, entroid);
 	if (ferror(s)) syserr();
 }
