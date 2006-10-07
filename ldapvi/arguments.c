@@ -19,6 +19,8 @@
 #include "common.h"
 #include "version.h" 
 
+static void parse_configuration(char *, cmdline *, GPtrArray *);
+
 #define USAGE								      \
 "Usage: ldapvi [OPTION]... [FILTER] [AD]...\n"				      \
 "Quickstart:\n"								      \
@@ -369,6 +371,9 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		break;
 	case OPTION_NOQUESTIONS:
 		result->noquestions = 1;
+		break;
+	case 'p':
+		parse_configuration(arg, result, ctrls);
 		break;
 	default:
 		abort();

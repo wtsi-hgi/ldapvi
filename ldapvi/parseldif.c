@@ -92,8 +92,7 @@ ldif_read_encoding(FILE *s)
 		case '\n':
 			if ( (c = fgetc(s)) == ' ') /* folded line */ break;
 			ungetc(c, s);
-			fputs("Error: Unexpected EOL.\n", stderr);
-			return -1;
+			return '\n';
 		case 0:
 			fputs("Error: Null byte not allowed.\n", stderr);
 			return -1;
@@ -219,6 +218,8 @@ ldif_read_line1(FILE *s, GString *name, GString *value)
 		if (ldif_read_safe(s, value) == -1)
 			return -1;
 		break;
+        case '\n':
+                break;
 	case ':':
 		if (ldif_read_safe(s, value) == -1) return -1;
 		ustr = (unsigned char *) value->str;;
