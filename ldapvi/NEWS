@@ -18,6 +18,7 @@ New features:
     * new command line argument --profile.
   - show optional arguments as comments
     * new command line argument -m (--may)
+  - new key 'f': forget deletions
 Bugfixes:
   - always replace entire attributes (fixing a bug reported by Javier Barroso)
   - fixed LDIF export to always Base64-encode non-ASCII values

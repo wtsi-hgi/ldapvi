@@ -132,7 +132,8 @@ struct ldapmodify_context {
 };
 
 static int
-ldapmodify_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
+ldapmodify_change(
+	int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
 	struct ldapmodify_context *ctx = userdata;
 	LDAP *ld = ctx->ld;
@@ -148,7 +149,7 @@ ldapmodify_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-ldapmodify_rename(char *dn1, tentry *modified, void *userdata)
+ldapmodify_rename(int key, char *dn1, tentry *modified, void *userdata)
 {
 	struct ldapmodify_context *ctx = userdata;
 	LDAP *ld = ctx->ld;
@@ -166,7 +167,7 @@ ldapmodify_rename(char *dn1, tentry *modified, void *userdata)
 }
 
 static int
-ldapmodify_add(char *dn, LDAPMod **mods, void *userdata)
+ldapmodify_add(int key, char *dn, LDAPMod **mods, void *userdata)
 {
 	struct ldapmodify_context *ctx = userdata;
 	LDAP *ld = ctx->ld;
@@ -182,7 +183,7 @@ ldapmodify_add(char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-ldapmodify_delete(char *dn, void *userdata)
+ldapmodify_delete(int key, char *dn, void *userdata)
 {
 	struct ldapmodify_context *ctx = userdata;
 	LDAP *ld = ctx->ld;
@@ -205,7 +206,8 @@ ldapmodify_delete(char *dn, void *userdata)
 }
 
 static int
-ldapmodify_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+ldapmodify_rename0(
+	int key, char *dn1, char *dn2, int deleteoldrdn, void *userdata)
 {
 	struct ldapmodify_context *ctx = userdata;
 	LDAP *ld = ctx->ld;
@@ -221,7 +223,7 @@ ldapmodify_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
 }
 
 static int
-ldif_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
+ldif_change(int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldif_modify(s, dn, mods);
@@ -229,7 +231,7 @@ ldif_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-ldif_rename(char *olddn, tentry *modified, void *userdata)
+ldif_rename(int key, char *olddn, tentry *modified, void *userdata)
 {
 	FILE *s = userdata;
 	int deleteoldrdn = frob_rdn(modified, olddn, FROB_RDN_CHECK) == -1;
@@ -240,7 +242,7 @@ ldif_rename(char *olddn, tentry *modified, void *userdata)
 }
 
 static int
-ldif_add(char *dn, LDAPMod **mods, void *userdata)
+ldif_add(int key, char *dn, LDAPMod **mods, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldif_add(s, dn, mods);
@@ -248,7 +250,7 @@ ldif_add(char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-ldif_delete(char *dn, void *userdata)
+ldif_delete(int key, char *dn, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldif_delete(s, dn);
@@ -256,7 +258,7 @@ ldif_delete(char *dn, void *userdata)
 }
 
 static int
-ldif_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+ldif_rename0(int key, char *dn1, char *dn2, int deleteoldrdn, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldif_rename(s, dn1, dn2, deleteoldrdn);
@@ -272,7 +274,53 @@ static thandler ldif_handler = {
 };
 
 static int
-vdif_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
+noop_change(int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
+{
+	return 0;
+}
+
+static int
+noop_rename(int key, char *olddn, tentry *modified, void *userdata)
+{
+	return 0;
+}
+
+static int
+noop_add(int key, char *dn, LDAPMod **mods, void *userdata)
+{
+	return 0;
+}
+
+static int
+noop_delete(int key, char *dn, void *userdata)
+{
+	return 0;
+}
+
+static int
+noop_rename0(int key, char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+{
+	return 0;
+}
+
+static int
+forget_deletion(int key, char *dn, void *userdata)
+{
+	GArray *deletions = userdata;
+	g_array_append_val(deletions, key);
+	return 0;
+}
+
+static thandler forget_deletions_handler = {
+	noop_change,
+	noop_rename,
+	noop_add,
+	forget_deletion,
+	noop_rename0
+};
+
+static int
+vdif_change(int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldapvi_modify(s, dn, mods);
@@ -280,7 +328,7 @@ vdif_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-vdif_rename(char *olddn, tentry *modified, void *userdata)
+vdif_rename(int key, char *olddn, tentry *modified, void *userdata)
 {
 	FILE *s = userdata;
 	int deleteoldrdn = frob_rdn(modified, olddn, FROB_RDN_CHECK) == -1;
@@ -289,7 +337,7 @@ vdif_rename(char *olddn, tentry *modified, void *userdata)
 }
 
 static int
-vdif_add(char *dn, LDAPMod **mods, void *userdata)
+vdif_add(int key, char *dn, LDAPMod **mods, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldapvi_add(s, dn, mods);
@@ -297,7 +345,7 @@ vdif_add(char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-vdif_delete(char *dn, void *userdata)
+vdif_delete(int key, char *dn, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldapvi_delete(s, dn);
@@ -305,7 +353,7 @@ vdif_delete(char *dn, void *userdata)
 }
 
 static int
-vdif_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+vdif_rename0(int key, char *dn1, char *dn2, int deleteoldrdn, void *userdata)
 {
 	FILE *s = userdata;
 	print_ldapvi_rename(s, dn1, dn2, deleteoldrdn);
@@ -317,7 +365,8 @@ struct statistics {
 };
 
 static int
-statistics_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
+statistics_change(
+	int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
 	struct statistics *st = userdata;
 	st->nmodify++;
@@ -325,7 +374,7 @@ statistics_change(char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-statistics_rename(char *olddn, tentry *modified, void *userdata)
+statistics_rename(int key, char *olddn, tentry *modified, void *userdata)
 {
 	struct statistics *st = userdata;
 	st->nrename++;
@@ -333,7 +382,7 @@ statistics_rename(char *olddn, tentry *modified, void *userdata)
 }
 
 static int
-statistics_add(char *dn, LDAPMod **mods, void *userdata)
+statistics_add(int key, char *dn, LDAPMod **mods, void *userdata)
 {
 	struct statistics *st = userdata;
 	st->nadd++;
@@ -341,7 +390,7 @@ statistics_add(char *dn, LDAPMod **mods, void *userdata)
 }
 
 static int
-statistics_delete(char *dn, void *userdata)
+statistics_delete(int key, char *dn, void *userdata)
 {
 	struct statistics *st = userdata;
 	st->ndelete++;
@@ -349,7 +398,8 @@ statistics_delete(char *dn, void *userdata)
 }
 
 static int
-statistics_rename0(char *dn1, char *dn2, int deleteoldrdn, void *userdata)
+statistics_rename0(
+	int key, char *dn1, char *dn2, int deleteoldrdn, void *userdata)
 {
 	struct statistics *st = userdata;
 	st->nrename++;
@@ -809,6 +859,22 @@ skip(tparser *p, char *dataname, GArray *offsets, cmdline *cmdline)
 }
 
 static void
+forget_deletions(
+	tparser *p, char *dataname, GArray *offsets, char *clean, char *data)
+{
+	int i;
+	GArray *deletions = g_array_new(0, 0, sizeof(int));
+
+	compare(p, &forget_deletions_handler, deletions, 
+		offsets, clean, data, 0, 0);
+	for (i = 0; i < deletions->len; i++) {
+		int n = g_array_index(deletions, int, i);
+		g_array_index(offsets, long, n) = -1;
+	}
+	g_array_free(deletions, 1);
+}
+
+static void
 append_sort_control(LDAP *ld, GPtrArray *ctrls, char *keystring)
 {
 	LDAPControl *ctrl;
@@ -1198,7 +1264,9 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			if (!analyze_changes(parser, offsets, clean, data))
 				return 0;
 		changed = 0;
-		switch (choose("Action?", "yqQvVebrs?", "(Type '?' for help.)")) {
+		switch (choose("Action?",
+			       "yqQvVebrsf?",
+			       "(Type '?' for help.)")) {
 		case 'y':
 			commit(parser, ld, offsets, clean, data,
 			       (void *) ctrls->pdata, cmdline->verbose, 0,
@@ -1248,6 +1316,10 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			skip(parser, data, offsets, cmdline);
 			changed = 1;
 			break;
+		case 'f':
+			forget_deletions(parser, data, offsets, clean, data);
+			changed = 1;
+			break;
 		case '?':
 			puts("Commands:\n"
 			     "  y -- commit changes\n"
@@ -1259,6 +1331,7 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			     "  b -- ask for user name and rebind\n"
 			     "  r -- reconnect to server\n"
 			     "  s -- skip one entry\n"
+			     "  f -- forget deletions\n"
 			     "  ? -- this help");
 			break;
 		}

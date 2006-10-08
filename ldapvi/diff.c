@@ -333,7 +333,7 @@ process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 		if (p->entry(data, datapos, 0, &entry, 0) == -1)
 			return -1;
 		mods = entry2mods(entry);
-		if (handler->add(entry_dn(entry), mods, userdata) == -1) {
+		if (handler->add(-1, entry_dn(entry), mods, userdata) == -1) {
 			ldap_mods_free(mods, 1);
 			entry_free(entry);
 			return -2;
@@ -353,7 +353,8 @@ process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 			mod->mod_op &= LDAP_MOD_BVALUES;
 			mod->mod_op |= LDAP_MOD_REPLACE;
 		}
-		if (handler->change(entry_dn(entry),
+		if (handler->change(-1,
+				    entry_dn(entry),
 				    entry_dn(entry),
 				    mods,
 				    userdata) == -1) {
@@ -371,7 +372,7 @@ process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 		int rc;
 		if (p->rename(data, datapos, &dn1, &dn2, &deleteoldrdn) ==-1)
 			return -1;
-		rc = handler->rename0(dn1, dn2, deleteoldrdn, userdata);
+		rc = handler->rename0(-1, dn1, dn2, deleteoldrdn, userdata);
 		free(dn1);
 		free(dn2);
 		if (rc)
@@ -381,7 +382,7 @@ process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 		int rc;
 		if (p->delete(data, datapos, &dn) == -1)
 			return -1;
-		rc = handler->delete(dn, userdata);
+		rc = handler->delete(-1, dn, userdata);
 		free(dn);
 		if (rc)
 			return -2;
@@ -390,7 +391,7 @@ process_immediate(tparser *p, thandler *handler, void *userdata, FILE *data,
 		LDAPMod **mods;
 		if (p->modify(data, datapos, &dn, &mods) ==-1)
 			return -1;
-		if (handler->change(dn, dn, mods, userdata) == -1) {
+		if (handler->change(-1, dn, dn, mods, userdata) == -1) {
 			free(dn);
 			ldap_mods_free(mods, 1);
 			return -2;
@@ -466,7 +467,7 @@ process_next_entry(
 			rc = -1;
 			goto cleanup;
 		}
-		if (handler->rename(entry_dn(cleanentry), entry, userdata)
+		if (handler->rename(n, entry_dn(cleanentry), entry, userdata)
 		    == -1) 
 		{
 			rc = -2;
@@ -475,7 +476,8 @@ process_next_entry(
 		rename_entry(cleanentry, entry_dn(entry), deleteoldrdn);
 	}
 	if ( (mods = compare_entries(cleanentry, entry))) {
-		if (handler->change(entry_dn(cleanentry),
+		if (handler->change(n,
+				    entry_dn(cleanentry),
 				    entry_dn(entry),
 				    mods,
 				    userdata)
@@ -579,7 +581,7 @@ process_deletions(tparser *p,
 			if (p->entry(clean, pos, 0, &cleanentry, 0) == -1)
 				abort();
 			switch (handler->delete(
-					entry_dn(cleanentry), userdata))
+					n, entry_dn(cleanentry), userdata))
 			{
 			case -1:
 				entry_free(cleanentry);

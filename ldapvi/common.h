@@ -172,11 +172,11 @@ int read_profile(FILE *s, tentry **entry);
 /*
  * diff.c
  */
-typedef int (*handler_change)(char *, char *, LDAPMod **, void *);
-typedef int (*handler_rename)(char *, tentry *, void *);
-typedef int (*handler_add)(char *, LDAPMod **, void *);
-typedef int (*handler_delete)(char *, void *);
-typedef int (*handler_rename0)(char *, char *, int, void *);
+typedef int (*handler_change)(int, char *, char *, LDAPMod **, void *);
+typedef int (*handler_rename)(int, char *, tentry *, void *);
+typedef int (*handler_add)(int, char *, LDAPMod **, void *);
+typedef int (*handler_delete)(int, char *, void *);
+typedef int (*handler_rename0)(int, char *, char *, int, void *);
 
 typedef struct thandler {
 	handler_change change;
