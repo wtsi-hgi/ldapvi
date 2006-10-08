@@ -47,8 +47,8 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "      --add              (Only with --in, --ldapmodify:)\n"                  \
 "                         Treat attrval records as new entries to add.\n"     \
 "  -o, --class OBJCLASS   Class to add.  Can be repeated.  Implies -A.\n"     \
-"  -c  --continue         Ignore LDAP errors and continue processing.\n"      \
 "      --config           Print parameters in ldap.conf syntax.\n"	      \
+"  -c  --continue         Ignore LDAP errors and continue processing.\n"      \
 "      --deleteoldrdn     (Only with --rename:) Delete the old RDN.\n"	      \
 "  -a, --deref            never|searching|finding|always\n"		      \
 "  -d, --discover         Auto-detect naming contexts.              [2]\n"    \
@@ -542,6 +542,17 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 			poptStrerror(c));
 		usage(2, 1);
 	}
+
+	if (result->classes
+	    && result->mode != ldapvi_mode_edit
+	    && result->mode != ldapvi_mode_out)
+	{
+		fputs("Error: Conflicting options given;"
+		      " cannot use --class in this mode.\n",
+		      stderr);
+		exit(1);
+	}
+
 	switch (result->mode) {
 	case ldapvi_mode_edit: /* fall through */
 	case ldapvi_mode_out:
@@ -557,11 +568,19 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 	case ldapvi_mode_modrdn:
 		result->rename_old = (char *) poptGetArg(ctx);
 		result->rename_new = (char *) poptGetArg(ctx);
-		/* fixme: error on more */
+		if (poptGetArg(ctx)) {
+			fputs("Error: Too many command line arguments.\n",
+			      stderr);
+			exit(1);
+		}
 		break;
 	case ldapvi_mode_in:
 		result->in_file = (char *) poptGetArg(ctx);
-		/* fixme: error on more */
+		if (poptGetArg(ctx)) {
+			fputs("Error: Too many command line arguments.\n",
+			      stderr);
+			exit(1);
+		}
 		break;
 	default:
 		abort();
