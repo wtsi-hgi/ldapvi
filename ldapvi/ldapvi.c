@@ -19,9 +19,12 @@
 #include <term.h>
 #include "common.h"
 
+static void cut_datafile(char *, long, cmdline *);
+
 static int
 compare(tparser *p, thandler *handler, void *userdata, GArray *offsets, 
-	char *cleanname, char *dataname, long *error_position)
+	char *cleanname, char *dataname, long *error_position,
+	cmdline *cmdline)
 {
 	FILE *clean, *data;
 	int rc;
@@ -38,11 +41,13 @@ compare(tparser *p, thandler *handler, void *userdata, GArray *offsets,
 		/* an error has happened */
 		int n;
 
+		if (!cmdline) {
+			fputs("oops: unexpected error in handler\n", stderr);
+			exit(1);
+		}
+
 		/* remove already-processed entries from the data file */
-		char *tmpname = append(dataname, ".tmp");
-		cp(dataname, tmpname, pos, 0);
-		rename(tmpname, dataname);
-		free(tmpname);
+		cut_datafile(dataname, pos, cmdline);
 
 		/* flag already-processed entries in the offset table */
 		for (n = 0; n < offsets->len; n++)
@@ -576,7 +581,7 @@ save_ldif(tparser *parser, GArray *offsets, char *clean, char *data,
 	fputs(name->str, s);
 	fputs("\n", s);
 
-	compare(parser, &ldif_handler, s, offsets, clean, data, 0);
+	compare(parser, &ldif_handler, s, offsets, clean, data, 0, 0);
 	if (fclose(s) == EOF) syserr();
 
 	printf("Your changes have been saved to %s.\n", name->str);
@@ -590,7 +595,7 @@ view_ldif(tparser *parser, char *dir, GArray *offsets, char *clean, char *data)
 	char *name = append(dir, "/ldif");
 	if ( !(s = fopen(name, "w"))) syserr();
 	fputs("version: 1\n", s);
-	compare(parser, &ldif_handler, s, offsets, clean, data, 0);
+	compare(parser, &ldif_handler, s, offsets, clean, data, 0, 0);
 	if (fclose(s) == EOF) syserr();
 	view(name);
 	free(name);
@@ -612,7 +617,7 @@ view_vdif(tparser *parser, char *dir, GArray *offsets, char *clean, char *data)
 
 	if ( !(s = fopen(name, "w"))) syserr();
 	fputs("version: ldapvi\n", s);
-	compare(parser, &vdif_handler, s, offsets, clean, data, 0);
+	compare(parser, &vdif_handler, s, offsets, clean, data, 0, 0);
 	if (fclose(s) == EOF) syserr();
 	view(name);
 	free(name);
@@ -656,7 +661,8 @@ analyze_changes(tparser *p, GArray *offsets, char *clean, char *data)
 
 retry:
 	memset(&st, 0, sizeof(st));
-	rc = compare(p, &statistics_handler, &st, offsets, clean, data, &pos);
+	rc = compare(
+		p, &statistics_handler, &st, offsets, clean, data, &pos, 0);
 
 	/* Success? */
 	if (rc == 0) {
@@ -695,7 +701,7 @@ retry:
 
 static void
 commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
-       LDAPControl **ctrls, int verbose, int noquestions)
+       LDAPControl **ctrls, int verbose, int noquestions, cmdline *cmdline)
 {
 	struct ldapmodify_context ctx;
 	static thandler ldapmodify_handler = {
@@ -710,7 +716,8 @@ commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
 	ctx.verbose = verbose;
 	ctx.noquestions = noquestions;
 	
-	switch (compare(p, &ldapmodify_handler, &ctx, offsets, clean, data, 0))
+	switch (compare(p, &ldapmodify_handler, &ctx, offsets, clean, data, 0,
+			cmdline))
 	{
 	case 0:
 		puts("Done.");
@@ -768,12 +775,11 @@ ndecimalp(char *str)
 	return !*ptr;
 }
 
-void
-skip(tparser *p, char *dataname, GArray *offsets)
+static void
+skip(tparser *p, char *dataname, GArray *offsets, cmdline *cmdline)
 {
 	long pos;
 	char *key;
-	char *tmpname = append(dataname, ".tmp");
 	FILE *s;
 
 	if ( !(s = fopen(dataname, "r"))) syserr();
@@ -782,11 +788,7 @@ skip(tparser *p, char *dataname, GArray *offsets)
 	if (fclose(s) == EOF) syserr();
 
 	if (key) {
-		/* remove from datafile */
-		cp(dataname, tmpname, pos, 0);
-		rename(tmpname, dataname);
-		free(tmpname);
-
+		cut_datafile(dataname, pos, cmdline);
 		if (ndecimalp(key))
 			g_array_index(offsets, long, atoi(key)) = -1;
 		free(key);
@@ -858,7 +860,7 @@ static void
 offline_diff(tparser *p, char *a, char *b)
 {
 	GArray *offsets = read_offsets(p, a);
-	compare(p, &ldif_handler, stdout, offsets, a, b, 0);
+	compare(p, &ldif_handler, stdout, offsets, a, b, 0, 0);
 	g_array_free(offsets, 1);
 }
 
@@ -1086,6 +1088,25 @@ write_file_header(FILE *s, cmdline *cmdline)
 	return nlines;
 }
 
+static void
+cut_datafile(char *dataname, long pos, cmdline *cmdline)
+{
+	FILE *in;
+	FILE *out;
+	char *tmpname = append(dataname, ".tmp");
+	
+	if ( !(in = fopen(dataname, "r"))) syserr();
+	if ( !(out = fopen(tmpname, "w"))) syserr();
+	if (fseek(in, pos, SEEK_SET) == -1) syserr();
+	write_file_header(out, cmdline);
+	fputc('\n', out);
+	fcopy(in, out);
+	if (fclose(in) == EOF) syserr();
+	if (fclose(out) == EOF) syserr();
+	rename(tmpname, dataname);
+	free(tmpname);
+}
+
 static int
 can_seek(FILE *s)
 {
@@ -1180,7 +1201,8 @@ main_loop(LDAP *ld, cmdline *cmdline,
 		switch (choose("Action?", "yqQvVebrs?", "(Type '?' for help.)")) {
 		case 'y':
 			commit(parser, ld, offsets, clean, data,
-			       (void *) ctrls->pdata, cmdline->verbose, 0);
+			       (void *) ctrls->pdata, cmdline->verbose, 0,
+			       cmdline);
 			changed = 1;
 			break; /* reached only on user error */
 		case 'q':
@@ -1223,7 +1245,7 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			changed = 1; /* print stats again */
 			break;
 		case 's':
-			skip(parser, data, offsets);
+			skip(parser, data, offsets, cmdline);
 			changed = 1;
 			break;
 		case '?':
@@ -1350,7 +1372,7 @@ main(int argc, const char **argv)
 	if (cmdline.noquestions) {
 		if (!analyze_changes(parser, offsets, clean, data)) return 0;
 		commit(parser, ld, offsets, clean, data, (void *) ctrls->pdata,
-		       cmdline.verbose, 1);
+		       cmdline.verbose, 1, &cmdline);
 		return 1;
 	}
 
