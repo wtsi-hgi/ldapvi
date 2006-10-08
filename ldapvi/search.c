@@ -185,7 +185,7 @@ search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
 			else
 				print_entry_message(s, ld, entry, n, entroid);
 			n++;
-			if (cmdline->progress && !notty)
+			if (!cmdline->quiet && !notty)
 				update_progress(ld, n, entry);
 			ldap_msgfree(entry);
 			break;
@@ -198,7 +198,7 @@ search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
 				update_progress(ld, n, 0);
 				putchar('\n');
 			}
-			handle_result(ld, result, start, n, cmdline->progress,
+			handle_result(ld, result, start, n, !cmdline->quiet,
 				      notty);
 			n = -1;
 			ldap_msgfree(result);
@@ -235,7 +235,7 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
 	else
 		for (i = 0; i < basedns->len; i++) {
 			char *base = g_ptr_array_index(basedns, i);
-			if (cmdline->progress && (basedns->len > 1))
+			if (!cmdline->quiet && (basedns->len > 1))
 				fprintf(stderr, "Searching in: %s\n", base);
 			search_subtree(s, ld, offsets, base, cmdline, ctrls,
 				       notty, ldif, schema);
@@ -243,7 +243,7 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
 
 	if (!offsets->len) {
 		if (!cmdline->noninteractive) {
-			if (!cmdline->progress) /* if not printed already... */
+			if (cmdline->quiet) /* if not printed already... */
 				fputs("No search results.  ", stderr);
 			fputs("(Maybe use --add or --discover instead?)\n",
 			      stderr);

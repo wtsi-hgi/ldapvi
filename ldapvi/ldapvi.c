@@ -698,7 +698,8 @@ print_counter(int color, char *label, int value)
  * for catching syntax errors before real processing starts.
  */
 static int
-analyze_changes(tparser *p, GArray *offsets, char *clean, char *data)
+analyze_changes(tparser *p, GArray *offsets, char *clean, char *data,
+		cmdline *cmdline)
 {
 	struct statistics st;
 	static thandler statistics_handler = {
@@ -719,9 +720,12 @@ retry:
 	/* Success? */
 	if (rc == 0) {
 		if (!(st.nadd + st.ndelete + st.nmodify + st.nrename)) {
-			puts("No changes.");
+			if (!cmdline->quiet)
+				puts("No changes.");
 			return 0;
 		}
+		if (cmdline->quiet)
+			return 1;
 		print_counter(COLOR_GREEN, "add", st.nadd);
 		fputs(", ", stdout);
 		print_counter(COLOR_BLUE, "rename", st.nrename);
@@ -731,6 +735,12 @@ retry:
 		print_counter(COLOR_RED, "delete", st.ndelete);
 		putchar('\n');
 		return 1;
+	}
+
+	if (cmdline->noninteractive) {
+		fputs("Syntax error in noninteractive mode, giving up.\n",
+		      stderr);
+		exit(1);
 	}
 
 	/* Syntax error */
@@ -774,7 +784,8 @@ commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
 			cmdline))
 	{
 	case 0:
-		puts("Done.");
+		if (!cmdline->quiet)
+			puts("Done.");
 		exit(0);
 	case -1:
 		yourfault("unexpected syntax error!");
@@ -1266,7 +1277,8 @@ main_loop(LDAP *ld, cmdline *cmdline,
 
 	for (;;) {
 		if (changed)
-			if (!analyze_changes(parser, offsets, clean, data))
+			if (!analyze_changes(
+				    parser, offsets, clean, data, cmdline))
 				return 0;
 		changed = 0;
 		switch (choose("Action?",
@@ -1380,7 +1392,7 @@ main(int argc, const char **argv)
 		cmdline.noninteractive = 1;
 	if (cmdline.noninteractive) {
 		cmdline.noquestions = 1;
-		cmdline.progress = 0;
+		cmdline.quiet = 1;
 	}
 	if (cmdline.ldif)
 		parser = &ldif_parser;
@@ -1452,7 +1464,8 @@ main(int argc, const char **argv)
 		yourfault("Cannot edit entries noninteractively.");
 
 	if (cmdline.noquestions) {
-		if (!analyze_changes(parser, offsets, clean, data)) return 0;
+		if (!analyze_changes(parser, offsets, clean, data, &cmdline))
+			return 0;
 		commit(parser, ld, offsets, clean, data, (void *) ctrls->pdata,
 		       cmdline.verbose, 1, cmdline.continuous, &cmdline);
 		return 1;

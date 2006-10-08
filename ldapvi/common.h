@@ -65,7 +65,7 @@ typedef struct cmdline {
 	char **attrs;
 	char *user;
 	char *password;
-	int progress;
+	int quiet;
 	int referrals;
 	GPtrArray *classes;
 	int ldapmodify_add;

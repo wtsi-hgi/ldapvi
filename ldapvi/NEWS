@@ -22,6 +22,8 @@ New features:
     * new key 'Y'
     * new command line argument -c (--continue)
     * incompatible change: -c does not mean --config anymore
+  - incompatible change: new command line option --noninteractive
+    * -! means --noninteractive now, not --noquestions
 Bugfixes:
   - always replace entire attributes (fixing a bug reported by Javier Barroso)
   - fixed LDIF export to always Base64-encode non-ASCII values

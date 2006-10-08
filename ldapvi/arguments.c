@@ -58,7 +58,8 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "  -H, --help             This help.\n"					      \
 "  -m, --may              Show missing optional attributes as comments.\n"    \
 "  -M, --managedsait      manageDsaIT control (critical).\n"		      \
-"  -!, --noquestions      Don't ask for confirmation.\n"		      \
+"      --noquestions      Commit without asking for confirmation.\n"	      \
+"  -!, --noninteractive   Never ask any questions.\n"			      \
 "  -q, --quiet            Disable progress output.\n"			      \
 "  -R, --read DN          Same as -b DN -s base '(objectclass=*)' + *\n"      \
 "  -Z, --starttls         Require startTLS.\n"				      \
@@ -163,7 +164,7 @@ init_cmdline(cmdline *cmdline)
 	cmdline->attrs = 0;
 	cmdline->user = 0;
 	cmdline->password = 0;
-	cmdline->progress = 1;
+	cmdline->quiet = 0;
 	cmdline->referrals = 1;
 	cmdline->classes = 0;
 	cmdline->ldapmodify_add = 0;
@@ -227,7 +228,7 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		result->config = 1;
 		break;
 	case 'q':
-		result->progress = 0;
+		result->quiet = 1;
 		break;
 	case 'A':
 		if (!result->classes)
@@ -309,7 +310,7 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		break;
 
 	case OPTION_LDAPSEARCH:
-		result->progress = 0;
+		result->quiet = 1;
 		result->noninteractive = 1;
 		/* fall through */
 	case OPTION_OUT:
