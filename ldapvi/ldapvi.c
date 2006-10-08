@@ -1079,7 +1079,7 @@ add_template(LDAP *ld, FILE *s, GPtrArray *wanted, char *base)
 	tschema *schema = schema_new(ld);
 
 	if (!schema) {
-		fputs("Error: Failed to read schema, giving up.", stderr);
+		fputs("Error: Failed to read schema, giving up.\n", stderr);
 		exit(1);
 	}
 
@@ -1468,6 +1468,7 @@ main(int argc, const char **argv)
 			return 0;
 		commit(parser, ld, offsets, clean, data, (void *) ctrls->pdata,
 		       cmdline.verbose, 1, cmdline.continuous, &cmdline);
+		fputs("Error in noninteractive mode, giving up.\n", stderr);
 		return 1;
 	}
 
