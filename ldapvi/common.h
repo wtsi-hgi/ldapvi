@@ -88,6 +88,7 @@ typedef struct cmdline {
 	int rename_dor;
 	char *in_file;
 	int schema_comments;
+	int continuous;
 } cmdline;
 
 void init_cmdline(cmdline *cmdline);

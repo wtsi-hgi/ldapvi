@@ -16,9 +16,12 @@ New features:
     ldapvi syntax, taking precedence over .ldaprc and /etc/ldap.conf if
     present
     * new command line argument --profile.
-  - show optional arguments as comments
-    * new command line argument -m (--may)
+  - new command line argument -m (--may): show optional arguments as comments
   - new key 'f': forget deletions
+  - continuous mode, similar to ldapmodify -c
+    * new key 'Y'
+    * new command line argument -c (--continue)
+    * incompatible change: -c does not mean --config anymore
 Bugfixes:
   - always replace entire attributes (fixing a bug reported by Javier Barroso)
   - fixed LDIF export to always Base64-encode non-ASCII values

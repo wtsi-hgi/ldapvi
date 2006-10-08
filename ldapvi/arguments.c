@@ -32,7 +32,6 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "       ldapvi --in [OPTION]... [FILENAME]         Load change records\n"     \
 "       ldapvi --delete [OPTION]... DN...          Edit a delete record\n"    \
 "       ldapvi --rename [OPTION]... DN1 DN2        Edit a rename record\n"    \
-"       ldapvi --diff FILE1 FILE2                  Compare two files\n"	      \
 "\n"									      \
 "Connection options:\n"							      \
 "  -h, --host URL         Server.\n"					      \
@@ -48,7 +47,8 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "      --add              (Only with --in, --ldapmodify:)\n"                  \
 "                         Treat attrval records as new entries to add.\n"     \
 "  -o, --class OBJCLASS   Class to add.  Can be repeated.  Implies -A.\n"     \
-"  -c, --config           Print parameters in ldap.conf syntax.\n"	      \
+"  -c  --continue         Ignore LDAP errors and continue processing.\n"      \
+"      --config           Print parameters in ldap.conf syntax.\n"	      \
 "      --deleteoldrdn     (Only with --rename:) Delete the old RDN.\n"	      \
 "  -a, --deref            never|searching|finding|always\n"		      \
 "  -d, --discover         Auto-detect naming contexts.              [2]\n"    \
@@ -95,7 +95,8 @@ enum ldapvi_option_numbers {
 	OPTION_TLS = 1000, OPTION_ENCODING, OPTION_LDIF, OPTION_LDAPVI,
 	OPTION_OUT, OPTION_IN, OPTION_DELETE, OPTION_RENAME, OPTION_MODRDN,
 	OPTION_NOQUESTIONS, OPTION_LDAPSEARCH, OPTION_LDAPMODIFY,
-	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN, OPTION_ADD
+	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN, OPTION_ADD,
+	OPTION_CONFIG
 };
 
 static struct poptOption options[] = {
@@ -112,8 +113,9 @@ static struct poptOption options[] = {
 	{"profile",	'p', POPT_ARG_STRING, 0, 'p', 0, 0},
 	{"tls",		  0, POPT_ARG_STRING, 0, OPTION_TLS, 0, 0},
 	{"encoding",	  0, POPT_ARG_STRING, 0, OPTION_ENCODING, 0, 0},
+	{"continuous",	'c', 0, 0, 'c', 0, 0},
+	{"continue",	'c', 0, 0, 'c', 0, 0},
 	{"empty",	'A', 0, 0, 'A', 0, 0},
-	{"config",	'c', 0, 0, 'c', 0, 0},
 	{"discover",	'd', 0, 0, 'd', 0, 0},
 	{"quiet",	'q', 0, 0, 'q', 0, 0},
 	{"verbose",	'v', 0, 0, 'v', 0, 0},
@@ -125,6 +127,7 @@ static struct poptOption options[] = {
 	{"noninteractive", '!', 0, 0, '!', 0, 0},
 	{"deleteoldrdn", 'r', 0, 0, 'r', 0, 0},
 	{"add",		  0, 0, 0, OPTION_ADD, 0, 0},
+	{"config",	  0, 0, 0, OPTION_CONFIG, 0, 0},
 	{"noquestions",   0, 0, 0, OPTION_NOQUESTIONS, 0, 0},
 	{"ldif",	  0, 0, 0, OPTION_LDIF, 0, 0},
 	{"ldapvi",	  0, 0, 0, OPTION_LDAPVI, 0, 0},
@@ -179,6 +182,7 @@ init_cmdline(cmdline *cmdline)
 	cmdline->mode = ldapvi_mode_edit;
 	cmdline->rename_dor = 0;
 	cmdline->schema_comments = 0;
+	cmdline->continuous = 0;
 }
 
 static void
@@ -217,6 +221,9 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		result->discover = 1;
 		break;
 	case 'c':
+		result->continuous = 1;
+		break;
+	case OPTION_CONFIG:
 		result->config = 1;
 		break;
 	case 'q':

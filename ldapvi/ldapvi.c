@@ -129,7 +129,18 @@ struct ldapmodify_context {
 	LDAPControl **controls;
 	int verbose;
 	int noquestions;
+	int continuous;
 };
+
+static int
+ldapmodify_error(struct ldapmodify_context *ctx, char *error)
+{
+	ldap_perror(ctx->ld, error);
+	if (!ctx->continuous)
+		return -1;
+	fputs("(error ignored)\n", stderr);
+	return 0;
+}
 
 static int
 ldapmodify_change(
@@ -141,10 +152,8 @@ ldapmodify_change(
 	int verbose = ctx->verbose;
 	
 	if (verbose) printf("(modify) %s\n", labeldn);
-	if (ldap_modify_ext_s(ld, dn, mods, ctrls, 0)) {
-		ldap_perror(ld, "ldap_modify");
-		return -1;
-	}
+	if (ldap_modify_ext_s(ld, dn, mods, ctrls, 0))
+		return ldapmodify_error(ctx, "ldap_modify");
 	return 0;
 }
 
@@ -159,10 +168,8 @@ ldapmodify_rename(int key, char *dn1, tentry *modified, void *userdata)
 	char *dn2 = entry_dn(modified);
 	int deleteoldrdn = frob_rdn(modified, dn1, FROB_RDN_CHECK) == -1;
 	if (verbose) printf("(rename) %s to %s\n", dn1, dn2);
-	if (moddn(ld, dn1, dn2, deleteoldrdn, ctrls)) {
-		ldap_perror(ld, "ldap_rename");
-		return -1;
-	}
+	if (moddn(ld, dn1, dn2, deleteoldrdn, ctrls))
+		return ldapmodify_error(ctx, "ldap_rename");
 	return 0;
 }
 
@@ -175,10 +182,8 @@ ldapmodify_add(int key, char *dn, LDAPMod **mods, void *userdata)
 	int verbose = ctx->verbose;
 	
 	if (verbose) printf("(add) %s\n", dn);
-	if (ldap_add_ext_s(ld, dn, mods, ctrls, 0)) {
-		ldap_perror(ld, "ldap_add");
-		return -1;
-	}
+	if (ldap_add_ext_s(ld, dn, mods, ctrls, 0))
+		return ldapmodify_error(ctx, "ldap_add");
 	return 0;
 }
 
@@ -199,8 +204,7 @@ ldapmodify_delete(int key, char *dn, void *userdata)
 			return -2;
 		/* else fall through */
 	default:
-		ldap_perror(ld, "ldap_delete");
-		return -1;
+		return ldapmodify_error(ctx, "ldap_delete");
 	}
 	return 0;
 }
@@ -215,10 +219,8 @@ ldapmodify_rename0(
 	int verbose = ctx->verbose;
 
 	if (verbose) printf("(rename) %s to %s\n", dn1, dn2);
-	if (moddn(ld, dn1, dn2, deleteoldrdn, ctrls)) {
-		ldap_perror(ld, "ldap_rename");
-		return -1;
-	}
+	if (moddn(ld, dn1, dn2, deleteoldrdn, ctrls))
+		return ldapmodify_error(ctx, "ldap_rename");
 	return 0;
 }
 
@@ -751,7 +753,8 @@ retry:
 
 static void
 commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
-       LDAPControl **ctrls, int verbose, int noquestions, cmdline *cmdline)
+       LDAPControl **ctrls, int verbose, int noquestions, int continuous,
+       cmdline *cmdline)
 {
 	struct ldapmodify_context ctx;
 	static thandler ldapmodify_handler = {
@@ -765,6 +768,7 @@ commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
 	ctx.controls = ctrls;
 	ctx.verbose = verbose;
 	ctx.noquestions = noquestions;
+	ctx.continuous = continuous;
 	
 	switch (compare(p, &ldapmodify_handler, &ctx, offsets, clean, data, 0,
 			cmdline))
@@ -1258,6 +1262,7 @@ main_loop(LDAP *ld, cmdline *cmdline,
 	  GPtrArray *ctrls, char *dir)
 {
 	int changed = 1;
+	int continuous = cmdline->continuous;
 
 	for (;;) {
 		if (changed)
@@ -1265,12 +1270,15 @@ main_loop(LDAP *ld, cmdline *cmdline,
 				return 0;
 		changed = 0;
 		switch (choose("Action?",
-			       "yqQvVebrsf?",
+			       "yYqQvVebrsf?",
 			       "(Type '?' for help.)")) {
+		case 'Y':
+			continuous = 1;
+			/* fall through */
 		case 'y':
 			commit(parser, ld, offsets, clean, data,
 			       (void *) ctrls->pdata, cmdline->verbose, 0,
-			       cmdline);
+			       continuous, cmdline);
 			changed = 1;
 			break; /* reached only on user error */
 		case 'q':
@@ -1323,6 +1331,7 @@ main_loop(LDAP *ld, cmdline *cmdline,
 		case '?':
 			puts("Commands:\n"
 			     "  y -- commit changes\n"
+			     "  Y -- commit, ignoring all errors\n"
 			     "  q -- save changes as LDIF and quit\n"
 			     "  Q -- discard changes and quit\n"
 			     "  v -- view changes as LDIF change records\n"
@@ -1445,7 +1454,7 @@ main(int argc, const char **argv)
 	if (cmdline.noquestions) {
 		if (!analyze_changes(parser, offsets, clean, data)) return 0;
 		commit(parser, ld, offsets, clean, data, (void *) ctrls->pdata,
-		       cmdline.verbose, 1, &cmdline);
+		       cmdline.verbose, 1, cmdline.continuous, &cmdline);
 		return 1;
 	}
 

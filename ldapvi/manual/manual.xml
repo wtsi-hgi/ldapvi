@@ -94,7 +94,7 @@
     <p>
       To do that, you might like 
     </p>
-    <code>$ ldapvi -c -d --host HOSTNAME</code>
+    <code>$ ldapvi --config --discover --host HOSTNAME</code>
     <p>
       This will ask the server for its naming contexts and print
       sample contents for <tt>~/.ldaprc</tt>
@@ -151,7 +151,7 @@ What now? [eQ?]</tty>
 	Regular usage: ldapvi has compared your changed file with the
 	original contents and reports on the changes found:
 	<tty><green>add: 2</green>, <blue>rename: 1</blue>, modify: 0, <red>delete: 1</red>
-Action? [yqQvVebrs?] </tty>
+Action? [yYqQvVebrsf?] </tty>
       </li>
     </ul>
     <p>
@@ -178,12 +178,22 @@ Action? [yqQvVebrs?] </tty>
       at the top.  After changing the file, you will be back at the
       prompt.
     </p>
-    <tty>Action? [yqQvVebrs?] <b>y</b>
+    <tty>Action? [yYqQvVebrsf?] <b>y</b>
 ldap_modify: Strong(er) authentication required (8)
         additional info: modifications require authentication
 Error at: cn=blub4,dc=lichteblau,dc=com
 add: 0, rename: 0, <yellow>modify: 1</yellow>, delete: 0
-Action? [yqQvVebrs?] </tty>
+Action? [yYqQvVebrsf?] </tty>
+    <ul>
+      <li><tt>Y</tt> -- commit, ignoring errors<br/></li>
+    </ul>
+    <p>
+      Apply all changes as if invoked
+      with <a href="#parameter-continue"><tt>--continue</tt></a>
+      ignoring all errors without further warning.  (Make sure to save
+      changes to an external file before using this option if they were
+      important.  Invalid changes will be lost otherwise.)
+    </p>
 
     <p title="Reviewing changes">
       Before applying the changes, you can inspect them in either LDIF
@@ -216,7 +226,7 @@ Action? [yqQvVebrs?] </tty>
       name can be either an DN or a search filter.  In the latter case,
       it must be written with parentheses around it.
     </p>
-    <tty>Action? [yqQvVebrs?] <b>b</b>
+    <tty>Action? [yYqQvVebrsf?] <b>b</b>
 Filter or DN: <b>(cn=admin)</b>
 Password: 
 OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
@@ -239,6 +249,20 @@ OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
     <ul>
       <li><tt>s</tt> -- skip one entry</li>
     </ul>
+    <p>
+      Removes the topmost entry from the data file.
+    </p>
+    <ul>
+      <li><tt>f</tt> -- forget all deletions</li>
+    </ul>
+    <p>
+      This is useful if you have deleted entries from the file
+      accidentally (or intentionally) and still want to commit other
+      change records in the same file.
+    </p>
+    <p>
+      This option does not affect explicit deletion records.
+    </p>
 
     <p title="Bailing out">There is a gentle way to quit and a hard one.</p>
     <ul>
@@ -252,7 +276,7 @@ OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
       name, and quit only then.  This way your changes do not get lost
       and you can feed them into ldapmodify at a later time.
     </p>
-    <tty>Action? [yqQvVebrs?] <b>q</b>
+    <tty>Action? [yYqQvVebrsf?] <b>q</b>
 Your changes have been saved to ,ldapvi-xenon-20094.ldif.</tty>
 
 <!--
@@ -428,8 +452,7 @@ wofuer was das doch gleich da?
 		 brief="Alias dereferencing mode">
 	Default is <tt>never</tt>.
       </parameter>
-      <parameter short="c"
-		 long="config"
+      <parameter long="config"
 		 brief="Print parameters in ldap.conf syntax"
 		 suppress-configuration="suppress-configuration">
 	Print a configuration file in standard <tt>ldap.conf</tt> syntax
@@ -438,6 +461,13 @@ wofuer was das doch gleich da?
 	initial configuration file after experimenting with search
 	parameters.  Useful in conjunction
 	with <a href="#parameter-discover"><tt>--discover</tt></a>.
+      </parameter>
+      <parameter short="c"
+		 long="continue"
+		 brief="Ignore LDAP errors and continue">
+	When LDAP errors occur while applying changes, print the messages
+	but continue processing.  This mode can also be specified
+	interactively using the 'Y' key.
       </parameter>
       <parameter long="encoding"
 		 values="ASCII|UTF-8|binary"
