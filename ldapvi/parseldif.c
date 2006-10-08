@@ -320,6 +320,8 @@ ldif_read_rename_body(FILE *s,
 		fputs("Error: Garbage at end of moddn record.\n", stderr);
 		return 0;
 	}
+	if (tmp2->len == 0)
+		return newrdn;
 
 	dn = xalloc(i + tmp2->len + 2);
 	strcpy(dn, newrdn);

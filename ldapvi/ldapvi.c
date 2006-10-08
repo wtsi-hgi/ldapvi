@@ -102,13 +102,17 @@ moddn(LDAP *ld, char *old, char *new, int dor, LDAPControl **ctrls)
 	int rc;
 	char **newrdns = ldap_explode_dn(new, 0);
 	char **ptr = newrdns;
-	char *newrdn = *ptr++; /* non-null (checked in validate_rename) */
+	char *newrdn = *ptr++;
 	GString *newsup = g_string_sized_new(strlen(new));
-	if (*ptr) g_string_append(newsup, *ptr++);
-	for (; *ptr; ptr++) {
-		g_string_append_c(newsup, ',');
-		g_string_append(newsup, *ptr);
-	}
+
+	if (newrdn) {
+		if (*ptr) g_string_append(newsup, *ptr++);
+		for (; *ptr; ptr++) {
+			g_string_append_c(newsup, ',');
+			g_string_append(newsup, *ptr);
+		}
+	} else
+		newrdn = "";
 	rc = ldap_rename_s(ld, old, newrdn, newsup->str, dor, ctrls, 0);
 	g_string_free(newsup, 1);
 	ldap_value_free(newrdns);

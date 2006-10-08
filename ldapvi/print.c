@@ -372,19 +372,20 @@ void
 print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
 {
 	char **newrdns = ldap_explode_dn(newdn, 0); 
+	int isRootDSE = !*newrdns;
 	GString *sup;
 	
 	fputc('\n', s);
 	print_ldif_line(s, "dn", olddn, -1);
 	fputs("changetype: modrdn\n", s);
 
-	/* fixme, siehe notes */
-	/* non-null (checked in validate_rename) */
-	print_ldif_line(s, "newrdn", *newrdns, -1);
+	print_ldif_line(s, "newrdn", isRootDSE ? "" : *newrdns, -1);
 
 	fprintf(s, "deleteoldrdn: %d\n", !!deleteoldrdn);
 
-	if (newrdns[1]) {
+	if (isRootDSE || !newrdns[1])
+		fputs("newsuperior:\n", s);
+	else {
 		sup = rdns2gstring(newrdns + 1);
 		print_ldif_line(s, "newsuperior", sup->str, sup->len);
 		g_string_free(sup, 1);
