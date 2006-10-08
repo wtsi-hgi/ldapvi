@@ -419,7 +419,7 @@ static void
 print_message_entroid(FILE *s, tentroid *entroid)
 {
 	int i;
-	struct ldap_attributetype *at;
+	LDAPAttributeType *at;
 	for (i = 0; i < entroid->must->len; i++) {
 		at = g_ptr_array_index(entroid->must, i);
 		fprintf(s, "# required attribute not shown: %s\n",

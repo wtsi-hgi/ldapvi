@@ -16,20 +16,20 @@
  */
 #include "common.h"
 
-struct ldap_objectclass *
+LDAPObjectClass *
 schema_get_objectclass(tschema *schema, char *name)
 {
 	return g_hash_table_lookup(schema->classes, name);
 }
 
-struct ldap_attributetype *
+LDAPAttributeType *
 schema_get_attributetype(tschema *schema, char *name)
 {
 	return g_hash_table_lookup(schema->types, name);
 }
 
 char *
-objectclass_name(struct ldap_objectclass *cls)
+objectclass_name(LDAPObjectClass *cls)
 {
 	char **names = cls->oc_names;
 	if (names && *names)
@@ -38,7 +38,7 @@ objectclass_name(struct ldap_objectclass *cls)
 }
 
 char *
-attributetype_name(struct ldap_attributetype *at)
+attributetype_name(LDAPAttributeType *at)
 {
 	char **names = at->at_names;
 	if (names && *names)
@@ -47,7 +47,7 @@ attributetype_name(struct ldap_attributetype *at)
 }
 
 static void
-add_objectclass(GHashTable *classes, struct ldap_objectclass *cls)
+add_objectclass(GHashTable *classes, LDAPObjectClass *cls)
 {
 	int i;
 	char **names = cls->oc_names;
@@ -59,7 +59,7 @@ add_objectclass(GHashTable *classes, struct ldap_objectclass *cls)
 }
 
 static void
-add_attributetype(GHashTable *types, struct ldap_attributetype *at)
+add_attributetype(GHashTable *types, LDAPAttributeType *at)
 {
 	int i;
 	char **names = at->at_names;
@@ -95,17 +95,15 @@ strcasehash(gconstpointer v)
 static gboolean
 aux_class_entry_p(gpointer key, gpointer value, gpointer data)
 {
-	char *name = key;
-	struct ldap_objectclass *class = value;
-	return !!strcmp(name, class->oc_oid);
+	LDAPObjectClass *class = value;
+	return !!strcmp(key, class->oc_oid);
 }
 
 static gboolean
 aux_type_entry_p(gpointer key, gpointer value, gpointer data)
 {
-	char *name = key;
-	struct ldap_attributetype *at = value;
-	return !!strcmp(name, at->at_oid);
+	LDAPAttributeType *at = value;
+	return !!strcmp(key, at->at_oid);
 }
 
 static void
@@ -174,9 +172,8 @@ schema_new(LDAP *ld)
 	if (values) {
 		char **ptr = values;
 		for (ptr = values; *ptr; ptr++) {
-			struct ldap_objectclass *cls
-				= ldap_str2objectclass(
-					*ptr, &code, &errp, 0);
+			LDAPObjectClass *cls
+				= ldap_str2objectclass(*ptr, &code, &errp, 0);
 			if (cls)
 				add_objectclass(schema->classes, cls);
                         else
@@ -190,7 +187,7 @@ schema_new(LDAP *ld)
 	if (values) {
 		char **ptr = values;
 		for (ptr = values; *ptr; ptr++) {
-			struct ldap_attributetype *at
+			LDAPAttributeType *at
 				= ldap_str2attributetype(
 					*ptr, &code, &errp, 0);
 			if (at)
@@ -242,11 +239,10 @@ entroid_free(tentroid *entroid)
 	free(entroid);
 }
 
-struct ldap_objectclass *
+LDAPObjectClass *
 entroid_get_objectclass(tentroid *entroid, char *name)
 {
-	struct ldap_objectclass *cls
-		= schema_get_objectclass(entroid->schema, name);
+	LDAPObjectClass *cls = schema_get_objectclass(entroid->schema, name);
 	if (!cls) {
 		g_string_assign(entroid->error,
 				"Error: Object class not found: ");
@@ -256,10 +252,10 @@ entroid_get_objectclass(tentroid *entroid, char *name)
 	return cls;
 }
 
-struct ldap_attributetype *
+LDAPAttributeType *
 entroid_get_attributetype(tentroid *entroid, char *name)
 {
-	struct ldap_attributetype *at
+	LDAPAttributeType *at
 		= schema_get_attributetype(entroid->schema, name);
 	if (!at) {
 		g_string_assign(entroid->error,
@@ -270,10 +266,10 @@ entroid_get_attributetype(tentroid *entroid, char *name)
 	return at;
 }
 
-struct ldap_objectclass *
+LDAPObjectClass *
 entroid_request_class(tentroid *entroid, char *name)
 {
-	struct ldap_objectclass *cls = entroid_get_objectclass(entroid, name);
+	LDAPObjectClass *cls = entroid_get_objectclass(entroid, name);
 	if (cls)
 		adjoin_ptr(entroid->classes, cls);
 	return cls;
@@ -282,7 +278,7 @@ entroid_request_class(tentroid *entroid, char *name)
 void
 entroid_remove_ad(tentroid *entroid, char *ad)
 {
-	struct ldap_attributetype *at;
+	LDAPAttributeType *at;
 	char *name;
 	char *s = strchr(ad, ';');
 
@@ -303,7 +299,7 @@ entroid_remove_ad(tentroid *entroid, char *ad)
 }
 
 static int
-compute_entroid_1(tentroid *entroid, struct ldap_objectclass *cls)
+compute_entroid_1(tentroid *entroid, LDAPObjectClass *cls)
 {
 	char **ptr;
 
@@ -323,7 +319,7 @@ compute_entroid_1(tentroid *entroid, struct ldap_objectclass *cls)
 		g_string_append_c(entroid->comment, '\n');
 	}
 	for (ptr = cls->oc_at_oids_must; ptr && *ptr; ptr++) {
-		struct ldap_attributetype *at
+		LDAPAttributeType *at
 			= entroid_get_attributetype(entroid, *ptr);
 		if (!at) return -1;
 		g_ptr_array_remove(entroid->may, at);
@@ -331,7 +327,7 @@ compute_entroid_1(tentroid *entroid, struct ldap_objectclass *cls)
 	}
 	for (ptr = cls->oc_at_oids_may; ptr && *ptr; ptr++) {
 		int i;
-		struct ldap_attributetype *at
+		LDAPAttributeType *at
 			= entroid_get_attributetype(entroid, *ptr);
 		if (!at) return -1;
 		for (i = 0; i < entroid->must->len; i++)
@@ -357,8 +353,7 @@ compute_entroid(tentroid *entroid)
 {
 	int i;
 	for (i = 0; i < entroid->classes->len; i++) {
-		struct ldap_objectclass *cls
-			= g_ptr_array_index(entroid->classes, i);
+		LDAPObjectClass *cls = g_ptr_array_index(entroid->classes, i);
 		if (compute_entroid_1(entroid, cls) == -1)
 			return -1;
 	}

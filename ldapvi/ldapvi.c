@@ -987,8 +987,8 @@ add_template(LDAP *ld, FILE *s, GPtrArray *wanted, char *base)
 {
 	int i;
 	tentroid *entroid;
-	struct ldap_objectclass *cls;
-	struct ldap_attributetype *at;
+	LDAPObjectClass *cls;
+	LDAPAttributeType *at;
 	tschema *schema = schema_new(ld);
 
 	if (!schema) {

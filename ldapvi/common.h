@@ -238,25 +238,25 @@ typedef struct tentroid {
 	GPtrArray *classes;
 	GPtrArray *must;
 	GPtrArray *may;
-	struct ldap_objectclass *structural;
+	LDAPObjectClass *structural;
 	GString *comment;
 	GString *error;
 } tentroid;
 
-char *objectclass_name(struct ldap_objectclass *);
-char *attributetype_name(struct ldap_attributetype *);
+char *objectclass_name(LDAPObjectClass *);
+char *attributetype_name(LDAPAttributeType *);
 
 tschema *schema_new(LDAP *ld);
 void schema_free(tschema *schema);
-struct ldap_objectclass *schema_get_objectclass(tschema *, char *);
-struct ldap_attributetype *schema_get_attributetype(tschema *, char *);
+LDAPObjectClass *schema_get_objectclass(tschema *, char *);
+LDAPAttributeType *schema_get_attributetype(tschema *, char *);
 
 tentroid *entroid_new(tschema *);
 void entroid_reset(tentroid *);
 void entroid_free(tentroid *);
-struct ldap_objectclass *entroid_get_objectclass(tentroid *, char *);
-struct ldap_attributetype *entroid_get_attributetype(tentroid *, char *);
-struct ldap_objectclass *entroid_request_class(tentroid *, char *);
+LDAPObjectClass *entroid_get_objectclass(tentroid *, char *);
+LDAPAttributeType *entroid_get_attributetype(tentroid *, char *);
+LDAPObjectClass *entroid_request_class(tentroid *, char *);
 void entroid_remove_ad(tentroid *, char *);
 int compute_entroid(tentroid *);
 

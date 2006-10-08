@@ -124,7 +124,7 @@ entroid_set_message(LDAP *ld, tentroid *entroid, LDAPMessage *entry)
 	entroid_reset(entroid);
 	for (ptr = values; *ptr; ptr++) {
 		struct berval *value = *ptr;
-		struct ldap_objectclass *cls
+		LDAPObjectClass *cls
 			= entroid_request_class(entroid, value->bv_val);
 		if (!cls) {
 			g_string_append(entroid->comment, "# ERROR: ");
