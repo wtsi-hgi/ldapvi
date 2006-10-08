@@ -251,6 +251,8 @@ search(FILE *s, LDAP *ld, cmdline *cmdline, LDAPControl **ctrls, int notty,
 		exit(0);
 	}
 
+	if (schema)
+		schema_free(schema);
 	return offsets;
 }
 

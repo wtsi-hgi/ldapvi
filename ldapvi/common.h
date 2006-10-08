@@ -247,8 +247,9 @@ char *objectclass_name(struct ldap_objectclass *);
 char *attributetype_name(struct ldap_attributetype *);
 
 tschema *schema_new(LDAP *ld);
-struct ldap_objectclass *get_objectclass(tschema *, char *);
-struct ldap_attributetype *get_attributetype(tschema *, char *);
+void schema_free(tschema *schema);
+struct ldap_objectclass *schema_get_objectclass(tschema *, char *);
+struct ldap_attributetype *schema_get_attributetype(tschema *, char *);
 
 tentroid *entroid_new(tschema *);
 void entroid_reset(tentroid *);

@@ -17,13 +17,13 @@
 #include "common.h"
 
 struct ldap_objectclass *
-get_objectclass(tschema *schema, char *name)
+schema_get_objectclass(tschema *schema, char *name)
 {
 	return g_hash_table_lookup(schema->classes, name);
 }
 
 struct ldap_attributetype *
-get_attributetype(tschema *schema, char *name)
+schema_get_attributetype(tschema *schema, char *name)
 {
 	return g_hash_table_lookup(schema->types, name);
 }
@@ -92,8 +92,48 @@ strcasehash(gconstpointer v)
 	return h;
 }
 
-/* fixme: wollen wir statt exit() einen fehlercode vorsehen, damit der
- * aufrufer seine eigene meldung ausgeben kann? */
+static gboolean
+aux_class_entry_p(gpointer key, gpointer value, gpointer data)
+{
+	char *name = key;
+	struct ldap_objectclass *class = value;
+	return !!strcmp(name, class->oc_oid);
+}
+
+static gboolean
+aux_type_entry_p(gpointer key, gpointer value, gpointer data)
+{
+	char *name = key;
+	struct ldap_attributetype *at = value;
+	return !!strcmp(name, at->at_oid);
+}
+
+static void
+free_class(gpointer key, gpointer value, gpointer data)
+{
+	ldap_objectclass_free(value);
+}
+
+static void
+free_type(gpointer key, gpointer value, gpointer data)
+{
+	ldap_attributetype_free(value);
+}
+
+void
+schema_free(tschema *schema)
+{
+	g_hash_table_foreach_steal(schema->classes, aux_class_entry_p, 0);
+	g_hash_table_foreach_steal(schema->types, aux_type_entry_p, 0);
+
+	g_hash_table_foreach(schema->classes, free_class, 0);
+	g_hash_table_foreach(schema->types, free_type, 0);
+
+	g_hash_table_destroy(schema->classes);
+	g_hash_table_destroy(schema->types);
+	free(schema);
+}
+
 tschema *
 schema_new(LDAP *ld)
 {
@@ -205,7 +245,8 @@ entroid_free(tentroid *entroid)
 struct ldap_objectclass *
 entroid_get_objectclass(tentroid *entroid, char *name)
 {
-	struct ldap_objectclass *cls = get_objectclass(entroid->schema, name);
+	struct ldap_objectclass *cls
+		= schema_get_objectclass(entroid->schema, name);
 	if (!cls) {
 		g_string_assign(entroid->error,
 				"Error: Object class not found: ");
@@ -219,7 +260,7 @@ struct ldap_attributetype *
 entroid_get_attributetype(tentroid *entroid, char *name)
 {
 	struct ldap_attributetype *at
-		= get_attributetype(entroid->schema, name);
+		= schema_get_attributetype(entroid->schema, name);
 	if (!at) {
 		g_string_assign(entroid->error,
 				"Error: Attribute type not found: ");

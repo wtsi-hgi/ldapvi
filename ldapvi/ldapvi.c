@@ -1037,6 +1037,7 @@ add_template(LDAP *ld, FILE *s, GPtrArray *wanted, char *base)
 	}
 
 	entroid_free(entroid);
+	schema_free(schema);
 }
 
 static void
