@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,10 +20,14 @@
 #include <term.h>
 #include "common.h"
 
+typedef void (*handler_entry)(char *, tentry *, void *);
+static void parse_file(
+	FILE *, tparser *, thandler *, void *, handler_entry, void *, int);
 static void cut_datafile(char *, long, cmdline *);
+static int write_file_header(FILE *, cmdline *);
 
 static int
-compare(tparser *p, thandler *handler, void *userdata, GArray *offsets, 
+compare(tparser *p, thandler *handler, void *userdata, GArray *offsets,
 	char *cleanname, char *dataname, long *error_position,
 	cmdline *cmdline)
 {
@@ -124,6 +129,10 @@ moddn(LDAP *ld, char *old, char *new, int dor, LDAPControl **ctrls)
 	return rc;
 }
 
+
+/*****************************************
+ * ldapmodify_handler
+ */
 struct ldapmodify_context {
 	LDAP *ld;
 	LDAPControl **controls;
@@ -150,7 +159,7 @@ ldapmodify_change(
 	LDAP *ld = ctx->ld;
 	LDAPControl **ctrls = ctx->controls;
 	int verbose = ctx->verbose;
-	
+
 	if (verbose) printf("(modify) %s\n", labeldn);
 	if (ldap_modify_ext_s(ld, dn, mods, ctrls, 0))
 		return ldapmodify_error(ctx, "ldap_modify");
@@ -164,7 +173,7 @@ ldapmodify_rename(int key, char *dn1, tentry *modified, void *userdata)
 	LDAP *ld = ctx->ld;
 	LDAPControl **ctrls = ctx->controls;
 	int verbose = ctx->verbose;
-	
+
 	char *dn2 = entry_dn(modified);
 	int deleteoldrdn = frob_rdn(modified, dn1, FROB_RDN_CHECK) == -1;
 	if (verbose) printf("(rename) %s to %s\n", dn1, dn2);
@@ -180,7 +189,7 @@ ldapmodify_add(int key, char *dn, LDAPMod **mods, void *userdata)
 	LDAP *ld = ctx->ld;
 	LDAPControl **ctrls = ctx->controls;
 	int verbose = ctx->verbose;
-	
+
 	if (verbose) printf("(add) %s\n", dn);
 	if (ldap_add_ext_s(ld, dn, mods, ctrls, 0))
 		return ldapmodify_error(ctx, "ldap_add");
@@ -194,7 +203,7 @@ ldapmodify_delete(int key, char *dn, void *userdata)
 	LDAP *ld = ctx->ld;
 	LDAPControl **ctrls = ctx->controls;
 	int verbose = ctx->verbose;
-	
+
 	if (verbose) printf("(delete) %s\n", dn);
 	switch (ldap_delete_ext_s(ld, dn, ctrls, 0)) {
 	case 0:
@@ -224,6 +233,10 @@ ldapmodify_rename0(
 	return 0;
 }
 
+
+/*****************************************
+ * ldif_handler
+ */
 static int
 ldif_change(int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
@@ -275,6 +288,10 @@ static thandler ldif_handler = {
 	ldif_rename0
 };
 
+
+/*****************************************
+ * noop handler
+ */
 static int
 noop_change(int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
@@ -305,6 +322,10 @@ noop_rename0(int key, char *dn1, char *dn2, int deleteoldrdn, void *userdata)
 	return 0;
 }
 
+
+/*****************************************
+ * forget_deletions_handler
+ */
 static int
 forget_deletion(int key, char *dn, void *userdata)
 {
@@ -321,6 +342,10 @@ static thandler forget_deletions_handler = {
 	noop_rename0
 };
 
+
+/*****************************************
+ * vdif_handler
+ */
 static int
 vdif_change(int key, char *labeldn, char *dn, LDAPMod **mods, void *userdata)
 {
@@ -362,6 +387,10 @@ vdif_rename0(int key, char *dn1, char *dn2, int deleteoldrdn, void *userdata)
 	return 0;
 }
 
+
+/*****************************************
+ * statistics_handler
+ */
 struct statistics {
 	int nmodify, nadd, ndelete, nrename;
 };
@@ -408,6 +437,10 @@ statistics_rename0(
 	return 0;
 }
 
+
+/* end of handlers
+ * **************************************** */
+
 struct rebind_data {
 	char *user;
 	char *password;
@@ -425,7 +458,7 @@ rebind_callback(
 	char *user = rebind_data->user;
 	char *password = rebind_data->password;
 	LDAPURLDesc *urld;
-	
+
 	printf("Received referral to %s.\n", url);
 
 	if (ldap_url_parse(url, &urld)) {
@@ -512,12 +545,12 @@ rebind(LDAP *ld, char *user, char *password, int register_callback, char **dn)
 	int free_password = 0;
 	int rc = -1;
 	struct rebind_data *rebind_data = xalloc(sizeof(struct rebind_data));
-	
+
 	if (user && !password) {
 		password = get_password();
 		free_password = 1;
 	}
-	if (user && user[0] == '(') 
+	if (user && user[0] == '(')
 		/* user is a search filter, not a name */
 		if ( !(user = find_user(ld, user)))
 			goto cleanup;
@@ -549,7 +582,7 @@ do_connect(char *server, char *user, char *password,
 	LDAP *ld = 0;
 	int rc = 0;
 	int drei = 3;
-	
+
 	if (server && !strstr(server, "://")) {
 		char *url = xalloc(strlen(server) + sizeof("ldap://"));
 		strcpy(url, "ldap://");
@@ -779,7 +812,7 @@ commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
 	ctx.verbose = verbose;
 	ctx.noquestions = noquestions;
 	ctx.continuous = continuous;
-	
+
 	switch (compare(p, &ldapmodify_handler, &ctx, offsets, clean, data, 0,
 			cmdline))
 	{
@@ -873,14 +906,107 @@ skip(tparser *p, char *dataname, GArray *offsets, cmdline *cmdline)
 	}
 }
 
+static tentroid *
+entroid_set_entry(LDAP *ld, tentroid *entroid, tentry *entry)
+{
+	int i;
+	tattribute *oc = entry_find_attribute(entry, "objectClass", 0);
+	GPtrArray *values;
+
+	if (!oc)
+		return 0;
+
+	entroid_reset(entroid);
+	values = attribute_values(oc);
+	for (i = 0; i < values->len; i++) {
+		GArray *av = g_ptr_array_index(values, i);
+
+		{
+			char zero = 0;
+			/* PFUSCH!  die GArrays muessen absolut weg! */
+			g_array_append_val(av, zero);
+			av->len--;
+		}
+
+		LDAPObjectClass *cls
+			= entroid_request_class(entroid, av->data);
+		if (!cls) {
+			g_string_append(entroid->comment, "# ");
+			g_string_append(entroid->comment, entroid->error->str);
+			return entroid;
+		}
+	}
+
+	if (compute_entroid(entroid) == -1) {
+		g_string_append(entroid->comment, "# ");
+		g_string_append(entroid->comment, entroid->error->str);
+		return entroid;
+	}
+	return entroid;
+}
+
+struct annotation_context {
+	LDAP *ld;
+	FILE *out;
+	tparser *parser;
+	tentroid *entroid;
+};
+
 static void
-forget_deletions(
-	tparser *p, char *dataname, GArray *offsets, char *clean, char *data)
+annotate_entry(char *key, tentry *entry, void *userdata)
+{
+	struct annotation_context *ctx = userdata;
+	tentroid *entroid = entroid_set_entry(ctx->ld, ctx->entroid, entry);
+	ctx->parser->print(ctx->out, entry, key, entroid);
+}
+
+static void
+rewrite_comments(LDAP *ld, char *dataname, cmdline *cmdline)
+{
+	FILE *in;
+	FILE *out;
+	char *tmpname;
+	tparser *p = &ldapvi_parser;
+	thandler *h = &vdif_handler;
+	struct annotation_context ctx;
+	int addp = cmdline->ldapmodify_add;
+	tschema *schema = schema_new(ld);
+
+	if (!schema) {
+		fputs("Error: Failed to read schema.\n", stderr);
+		return;
+	}
+
+	tmpname = append(dataname, ".tmp");
+	if ( !(in = fopen(dataname, "r"))) syserr();
+	if ( !(out = fopen(tmpname, "w"))) syserr();
+
+	write_file_header(out, cmdline);
+	if (cmdline->ldif) {
+		p = &ldif_parser;
+		h = &ldif_handler;
+	}
+	ctx.ld = ld;
+	ctx.out = out;
+	ctx.entroid = entroid_new(schema);
+	ctx.parser = p;
+	parse_file(in, p, h, out, annotate_entry, &ctx, addp);
+
+	if (fclose(in) == EOF) syserr();
+	if (fclose(out) == EOF) syserr();
+	rename(tmpname, dataname);
+	free(tmpname);
+	schema_free(schema);
+}
+
+
+static void
+forget_deletions(tparser *p, GArray *offsets, char *clean, char *data)
 {
 	int i;
 	GArray *deletions = g_array_new(0, 0, sizeof(int));
 
-	compare(p, &forget_deletions_handler, deletions, 
+	compare(p, &forget_deletions_handler, deletions,
 		offsets, clean, data, 0, 0);
 	for (i = 0; i < deletions->len; i++) {
 		int n = g_array_index(deletions, int, i);
@@ -907,7 +1033,7 @@ read_offsets(tparser *p, char *file)
 {
 	GArray *offsets = g_array_new(0, 0, sizeof(long));
 	FILE *s;
-	
+
 	if ( !(s = fopen(file, "r"))) syserr();
 	for (;;) {
 		long offset;
@@ -962,9 +1088,9 @@ write_config(LDAP *ld, FILE *f, cmdline *cmdline)
 	fputs("# (for parameterless operation, make sure to include at"
 	      " least this line)\n",
 	      f);
-	if (!server) 
+	if (!server)
 		ldap_get_option(ld, LDAP_OPT_URI, &server);
-	if (!server) 
+	if (!server)
 		ldap_get_option(ld, LDAP_OPT_HOST_NAME, &server);
 	if (server)
 		if (strstr(server, "://"))
@@ -993,7 +1119,7 @@ write_config(LDAP *ld, FILE *f, cmdline *cmdline)
 			      f);
 		fputs("#BASE <dn>\n", f);
 	}
-	
+
 	/* BINDDN */
 	fputc('\n', f);
 	fputs("# user to bind as\n", f);
@@ -1003,7 +1129,7 @@ write_config(LDAP *ld, FILE *f, cmdline *cmdline)
 		fprintf(f, "BINDDN %s\n", user);
 	else
 		fputs("#BINDDN <dn>\n", f);
-	
+
 	/* search options */
 	fputc('\n', f);
 	fputs("# search parameters (uncomment as needed)\n", f);
@@ -1128,23 +1254,33 @@ add_template(LDAP *ld, FILE *s, GPtrArray *wanted, char *base)
 }
 
 static void
-parse_file(FILE *in, tparser *p, thandler *h, void *userdata, int addp)
+parse_file(FILE *in,
+	   tparser *p, thandler *h, void *userdata,
+	   handler_entry hentry, void *entrydata,
+	   int addp)
 {
 	char *key = 0;
 
 	for (;;) {
 		long pos;
-		char *k;
 
 		if (p->peek(in, -1, &key, &pos) == -1) exit(1);
 		if (!key) break;
 
-		k = key;
-		if (!strcmp(key, "add") && !addp)
-			k = "replace";
-		if (process_immediate(p, h, userdata, in, pos, k) < 0)
-			exit(1);
-
+		if (ndecimalp(key)) {
+			tentry *entry;
+			if (p->entry(in, pos, 0, &entry, 0) == -1)
+				exit(1);
+			if (hentry)
+				hentry(key, entry, entrydata);
+			entry_free(entry);
+		} else {
+			char *k = key;
+			if (!strcmp(key, "add") && !addp)
+				k = "replace";
+			if (process_immediate(p, h, userdata, in, pos, k) < 0)
+				exit(1);
+		}
 		free(key);
 	}
 }
@@ -1153,7 +1289,7 @@ static int
 write_file_header(FILE *s, cmdline *cmdline)
 {
 	int nlines = 0;
-	
+
 	if (print_binary_mode == PRINT_UTF8 && !cmdline->ldif) {
 		fputs("# -*- coding: utf-8 -*- vim:encoding=utf-8:\n", s);
 		nlines++;
@@ -1175,7 +1311,7 @@ cut_datafile(char *dataname, long pos, cmdline *cmdline)
 	FILE *in;
 	FILE *out;
 	char *tmpname = append(dataname, ".tmp");
-	
+
 	if ( !(in = fopen(dataname, "r"))) syserr();
 	if ( !(out = fopen(tmpname, "w"))) syserr();
 	if (fseek(in, pos, SEEK_SET) == -1) syserr();
@@ -1234,7 +1370,7 @@ main_write_files(
 
 		if (cmdline->ldif) h = &ldif_handler;
 		if (cmdline->ldapvi) p = &ldapvi_parser;
-		parse_file(source, p, h, s, cmdline->ldapmodify_add);
+		parse_file(source, p, h, s, 0, 0, cmdline->ldapmodify_add);
 
 		if (cmdline->in_file)
 			if (fclose(source) == EOF) syserr();
@@ -1282,7 +1418,7 @@ main_loop(LDAP *ld, cmdline *cmdline,
 				return 0;
 		changed = 0;
 		switch (choose("Action?",
-			       "yYqQvVebrsf?",
+			       "yYqQvVebrsf+?",
 			       "(Type '?' for help.)")) {
 		case 'Y':
 			continuous = 1;
@@ -1337,7 +1473,12 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			changed = 1;
 			break;
 		case 'f':
-			forget_deletions(parser, data, offsets, clean, data);
+			forget_deletions(parser, offsets, clean, data);
+			changed = 1;
+			break;
+		case '+':
+			rewrite_comments(ld, data, cmdline);
+			edit(data, 0);
 			changed = 1;
 			break;
 		case '?':
@@ -1353,6 +1494,7 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			     "  r -- reconnect to server\n"
 			     "  s -- skip one entry\n"
 			     "  f -- forget deletions\n"
+			     "  + -- rewrite file to include schema comments\n"
 			     "  ? -- this help");
 			break;
 		}

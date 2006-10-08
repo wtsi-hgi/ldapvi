@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,12 +35,26 @@
 #include <unistd.h>
 #include <ctype.h>
 
-#define MANUAL_SYNTAX_URL					\
-"http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax"
-#define RFC_2849_URL				\
-"http://www.rfc-editor.org/rfc/rfc2849.txt"
-#define MANUAL_LDIF_URL							\
-"http://www.lichteblau.com/ldapvi/manual/manual.xml#syntax-ldif"
+#define MANUAL_SYNTAX_URL "http://www.lichteblau.com/ldapvi/manual#syntax"
+#define MANUAL_LDIF_URL "http://www.lichteblau.com/ldapvi/manual#syntax-ldif"
+#define RFC_2849_URL "http://www.rfc-editor.org/rfc/rfc2849.txt"
+
+typedef struct tschema {
+	GHashTable *classes;
+	GHashTable *types;
+} tschema;
+
+typedef struct tentroid {
+	tschema *schema;
+	GPtrArray *classes;
+	GPtrArray *must;
+	GPtrArray *may;
+	LDAPObjectClass *structural;
+	GString *comment;
+	GString *error;
+} tentroid;
+
+
 
 /*
  * error.c
@@ -147,6 +162,7 @@ typedef int (*parser_skip)(FILE *, long, char **);
 typedef int (*parser_rename)(FILE *, long, char **, char **, int *);
 typedef int (*parser_delete)(FILE *, long, char **);
 typedef int (*parser_modify)(FILE *, long, char **, LDAPMod ***);
+typedef void (*print_entry)(FILE *, tentry *, char *, tentroid *);
 
 typedef struct tparser {
 	parser_entry entry;
@@ -157,6 +173,8 @@ typedef struct tparser {
 	parser_rename rename;
 	parser_delete delete;
 	parser_modify modify;
+
+	print_entry print; /* ja, das muss so sein */
 } tparser;
 
 extern tparser ldif_parser;
@@ -229,21 +247,6 @@ int adjoin_ptr(GPtrArray *, void *);
 /*
  * schema.c
  */
-typedef struct tschema {
-	GHashTable *classes;
-	GHashTable *types;
-} tschema;
-
-typedef struct tentroid {
-	tschema *schema;
-	GPtrArray *classes;
-	GPtrArray *must;
-	GPtrArray *may;
-	LDAPObjectClass *structural;
-	GString *comment;
-	GString *error;
-} tentroid;
-
 char *objectclass_name(LDAPObjectClass *);
 char *attributetype_name(LDAPAttributeType *);
 
@@ -258,7 +261,7 @@ void entroid_free(tentroid *);
 LDAPObjectClass *entroid_get_objectclass(tentroid *, char *);
 LDAPAttributeType *entroid_get_attributetype(tentroid *, char *);
 LDAPObjectClass *entroid_request_class(tentroid *, char *);
-void entroid_remove_ad(tentroid *, char *);
+int entroid_remove_ad(tentroid *, char *);
 int compute_entroid(tentroid *);
 
 /*
@@ -269,13 +272,14 @@ typedef enum t_print_binary_mode {
 } t_print_binary_mode;
 extern t_print_binary_mode print_binary_mode;
 
-void print_entry_object(FILE *s, tentry *entry, char *key);
+void print_ldapvi_entry(FILE *s, tentry *entry, char *key, tentroid *);
 void print_ldapvi_modify(FILE *s, char *dn, LDAPMod **mods);
 void print_ldapvi_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
 void print_ldapvi_add(FILE *s, char *dn, LDAPMod **mods);
 void print_ldapvi_delete(FILE *s, char *dn);
 void print_ldapvi_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn);
-void print_entry_message(FILE *, LDAP *, LDAPMessage *, int key, tentroid *);
+void print_ldapvi_message(FILE *, LDAP *, LDAPMessage *, int key, tentroid *);
+void print_ldif_entry(FILE *s, tentry *entry, char *key, tentroid *);
 void print_ldif_modify(FILE *s, char *dn, LDAPMod **mods);
 void print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn);
 void print_ldif_add(FILE *s, char *dn, LDAPMod **mods);

@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -161,7 +162,7 @@ print_attribute(FILE *s, tattribute *attribute)
 {
 	GPtrArray *values = attribute_values(attribute);
 	int j;
-	
+
 	for (j = 0; j < values->len; j++) {
 		GArray *av = g_ptr_array_index(values, j);
 		fputs(attribute_ad(attribute), s);
@@ -171,8 +172,24 @@ print_attribute(FILE *s, tattribute *attribute)
 	if (ferror(s)) syserr();
 }
 
+static void
+print_entroid_bottom(FILE *s, tentroid *entroid)
+{
+	int i;
+	LDAPAttributeType *at;
+	for (i = 0; i < entroid->must->len; i++) {
+		at = g_ptr_array_index(entroid->must, i);
+		fprintf(s, "# required attribute not shown: %s\n",
+			attributetype_name(at));
+	}
+	for (i = 0; i < entroid->may->len; i++) {
+		at = g_ptr_array_index(entroid->may, i);
+		fprintf(s, "#%s: \n", attributetype_name(at));
+	}
+}
+
 void
-print_entry_object(FILE *s, tentry *entry, char *key)
+print_ldapvi_entry(FILE *s, tentry *entry, char *key, tentroid *entroid)
 {
 	GPtrArray *attributes = entry_attributes(entry);
 	int i;
@@ -184,10 +201,18 @@ print_entry_object(FILE *s, tentry *entry, char *key)
 	fputc('\n', s);
 	if (ferror(s)) syserr();
 
+	if (entroid)
+		fputs(entroid->comment->str, s);
 	for (i = 0; i < attributes->len; i++) {
 		tattribute *attribute = g_ptr_array_index(attributes, i);
+		char *ad = attribute_ad(attribute);
+		if ( entroid && !entroid_remove_ad(entroid, ad))
+			fprintf(s, "# WARNING: %s not allowed by schema\n",
+				ad);
 		print_attribute(s, attribute);
 	}
+	if (entroid)
+		print_entroid_bottom(s, entroid);
 }
 
 static void
@@ -252,7 +277,7 @@ rdns2gstring(char **ptr)
 void
 print_ldapvi_modrdn(FILE *s, char *olddn, char *newrdn, int deleteoldrdn)
 {
-	char **newrdns = ldap_explode_dn(olddn, 0); 
+	char **newrdns = ldap_explode_dn(olddn, 0);
 	GString *newdn;
 	char *tmp;
 
@@ -316,7 +341,6 @@ print_ldif_line(FILE *s, char *ad, char *str, int len)
 		print_base64((unsigned char *) str, len, s);
 	}
 	fputs("\n", s);
-	
 }
 
 static void
@@ -371,10 +395,10 @@ print_ldif_add(FILE *s, char *dn, LDAPMod **mods)
 void
 print_ldif_rename(FILE *s, char *olddn, char *newdn, int deleteoldrdn)
 {
-	char **newrdns = ldap_explode_dn(newdn, 0); 
+	char **newrdns = ldap_explode_dn(newdn, 0);
 	int isRootDSE = !*newrdns;
 	GString *sup;
-	
+
 	fputc('\n', s);
 	print_ldif_line(s, "dn", olddn, -1);
 	fputs("changetype: modrdn\n", s);
@@ -416,24 +440,8 @@ print_ldif_delete(FILE *s, char *dn)
 	if (ferror(s)) syserr();
 }
 
-static void
-print_message_entroid(FILE *s, tentroid *entroid)
-{
-	int i;
-	LDAPAttributeType *at;
-	for (i = 0; i < entroid->must->len; i++) {
-		at = g_ptr_array_index(entroid->must, i);
-		fprintf(s, "# required attribute not shown: %s\n",
-			attributetype_name(at));
-	}
-	for (i = 0; i < entroid->may->len; i++) {
-		at = g_ptr_array_index(entroid->may, i);
-		fprintf(s, "#%s: \n", attributetype_name(at));
-	}
-}
-
 void
-print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key,
+print_ldapvi_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key,
 		    tentroid *entroid)
 {
 	char *dn, *ad;
@@ -469,8 +477,39 @@ print_entry_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key,
 	ber_free(ber, 0);
 
 	if (entroid)
-		print_message_entroid(s, entroid);
+		print_entroid_bottom(s, entroid);
 	if (ferror(s)) syserr();
+}
+
+void
+print_ldif_entry(FILE *s, tentry *entry, char *key, tentroid *entroid)
+{
+	int i;
+	GPtrArray *attributes = entry_attributes(entry);
+
+	fputc('\n', s);
+	print_ldif_line(s, "dn", entry_dn(entry), -1);
+	if (key)
+		fprintf(s, "ldapvi-key: %s\n", key);
+	if (entroid)
+		fputs(entroid->comment->str, s);
+	for (i = 0; i < attributes->len; i++) {
+		tattribute *attribute = g_ptr_array_index(attributes, i);
+		char *ad = attribute_ad(attribute);
+		GPtrArray *values = attribute_values(attribute);
+		int j;
+
+		if ( entroid && !entroid_remove_ad(entroid, ad))
+			fprintf(s, "# WARNING: %s not allowed by schema\n",
+				ad);
+
+		for (j = 0; j < values->len; j++) {
+			GArray *av = g_ptr_array_index(values, j);
+			print_ldif_line(s, ad, av->data, av->len);
+		}
+	}
+	if (entroid)
+		print_entroid_bottom(s, entroid);
 }
 
 void
@@ -504,6 +543,6 @@ print_ldif_message(FILE *s, LDAP *ld, LDAPMessage *entry, int key,
 	ber_free(ber, 0);
 
 	if (entroid)
-		print_message_entroid(s, entroid);
+		print_entroid_bottom(s, entroid);
 	if (ferror(s)) syserr();
 }

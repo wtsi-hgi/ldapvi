@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -187,7 +188,7 @@ ldif_read_line1(FILE *s, GString *name, GString *value)
 
 	g_string_truncate(name, 0);
 	g_string_truncate(value, 0);
-	
+
 	/* skip comment lines */
 	do {
 		c = fgetc(s);
@@ -280,7 +281,7 @@ ldif_read_rename_body(FILE *s,
 	}
 	i = tmp2->len;
 	newrdn = xdup(tmp2->str);
-	
+
 	if (ldif_read_line(s, tmp1, tmp2) == -1) {
 		free(newrdn);
 		return 0;
@@ -300,7 +301,7 @@ ldif_read_rename_body(FILE *s,
 		free(newrdn);
 		return 0;
 	}
-	
+
 	if (ldif_read_line(s, tmp1, tmp2) == -1) return 0;
 	if (tmp1->len == 0) {
 		char *komma = strchr(olddn, ',');
@@ -461,7 +462,7 @@ ldif_read_header(GString *tmp1, GString *tmp2,
 	char *k;
 	char *d;
 	long pos2;
-	
+
 	if (offset != -1)
 		if (fseek(s, offset, SEEK_SET) == -1) syserr();
 	do {
@@ -531,7 +532,7 @@ ldif_read_attrval_body(GString *tmp1, GString *tmp2, FILE *s, tentry *entry)
 {
 	for (;;) {
 		tattribute *attribute;
-		
+
 		if (ldif_read_line(s, tmp1, tmp2) == -1)
 			return -1;
 		if (!tmp1->len)
@@ -605,7 +606,7 @@ ldif_peek_entry(FILE *s, long offset, char **key, long *pos)
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 	return rc;
-}	
+}
 
 /*
  * Lies ein rename-record nach position `offset' in `s'.
@@ -642,7 +643,7 @@ ldif_read_rename(FILE *s, long offset, char **dn1, char **dn2,
 	if (dn1) *dn1 = olddn; else free(olddn);
 	if (dn2) *dn2 = newdn; else free(newdn);
 	return 0;
-}	
+}
 
 int
 ldif_read_delete(FILE *s, long offset, char **dn)
@@ -667,7 +668,7 @@ ldif_read_delete(FILE *s, long offset, char **dn)
 	else
 		*dn = str;
 	return rc;
-}	
+}
 
 /*
  * Lies ein modify-record nach position `offset' in `s'.
@@ -702,7 +703,7 @@ ldif_read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
 	if (dn) *dn = d; else free(d);
 	if (mods) *mods = m; else ldap_mods_free(m, 1);
 	return 0;
-}	
+}
 
 /*
  * Parse a complete entry or changerecord and ignore it.  Set *key accordingly.
@@ -744,5 +745,6 @@ tparser ldif_parser = {
 	ldif_skip_entry,
 	ldif_read_rename,
 	ldif_read_delete,
-	ldif_read_modify
+	ldif_read_modify,
+	print_ldif_entry
 };

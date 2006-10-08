@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -275,12 +276,13 @@ entroid_request_class(tentroid *entroid, char *name)
 	return cls;
 }
 
-void
+int
 entroid_remove_ad(tentroid *entroid, char *ad)
 {
 	LDAPAttributeType *at;
 	char *name;
 	char *s = strchr(ad, ';');
+	int found;
 
 	if (s) {
 		int n = s - ad;
@@ -290,12 +292,13 @@ entroid_remove_ad(tentroid *entroid, char *ad)
 		name = ad;
 
 	if ( !(at = entroid_get_attributetype(entroid, name)))
-		return;
-	g_ptr_array_remove(entroid->must, at);
-	g_ptr_array_remove(entroid->may, at);
+		return 0;
+	found = g_ptr_array_remove(entroid->must, at);
+	found |= g_ptr_array_remove(entroid->may, at);
 
 	if (name != ad)
 		free(name);
+	return found;
 }
 
 static int

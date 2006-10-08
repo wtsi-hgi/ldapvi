@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -182,7 +183,7 @@ cryptmd5(char *key)
 }
 
 /*
- * Read a line in 
+ * Read a line in
  *   name ' ' (':' encoding)? value '\n'
  * syntax, skipping comments.  VALUE is parsed according to ENCODING.
  * Empty NAME is allowed.
@@ -199,7 +200,7 @@ read_line1(FILE *s, GString *name, GString *value)
 
 	g_string_truncate(name, 0);
 	g_string_truncate(value, 0);
-	
+
 	/* skip comment lines */
 	do {
 		c = fgetc(s);
@@ -290,7 +291,7 @@ read_line1(FILE *s, GString *name, GString *value)
 
 
 /*
- * Read a line in 
+ * Read a line in
  *   name ' ' (':' encoding)? value '\n'
  * syntax, skipping comments.  VALUE is parsed according to ENCODING.
  * Empty NAME is a parse error.
@@ -323,7 +324,7 @@ static char *
 read_rename_body(FILE *s, GString *tmp1, GString *tmp2, int *deleteoldrdn)
 {
 	char *dn;
-	
+
 	if (read_line(s, tmp1, tmp2) == -1)
 		return 0;
 	if (!tmp1->len) {
@@ -493,7 +494,7 @@ read_attrval_body(GString *tmp1, GString *tmp2, FILE *s, tentry *entry)
 {
 	for (;;) {
 		tattribute *attribute;
-		
+
 		if (read_line(s, tmp1, tmp2) == -1)
 			return -1;
 		if (!tmp1->len)
@@ -565,7 +566,7 @@ peek_entry(FILE *s, long offset, char **key, long *pos)
 	g_string_free(tmp1, 1);
 	g_string_free(tmp2, 1);
 	return rc;
-}	
+}
 
 /*
  * Lies ein rename-record nach position `offset' in `s'.
@@ -601,7 +602,7 @@ read_rename(FILE *s, long offset, char **dn1, char **dn2, int *deleteoldrdn)
 	if (dn1) *dn1 = olddn; else free(olddn);
 	if (dn2) *dn2 = newdn; else free(newdn);
 	return 0;
-}	
+}
 
 int
 read_delete(FILE *s, long offset, char **dn)
@@ -626,7 +627,7 @@ read_delete(FILE *s, long offset, char **dn)
 	else
 		*dn = str;
 	return rc;
-}	
+}
 
 /*
  * Lies ein modify-record nach position `offset' in `s'.
@@ -661,7 +662,7 @@ read_modify(FILE *s, long offset, char **dn, LDAPMod ***mods)
 	if (dn) *dn = d; else free(d);
 	if (mods) *mods = m; else ldap_mods_free(m, 1);
 	return 0;
-}	
+}
 
 /*
  * Parse a complete entry or changerecord and ignore it.  Set *key accordingly.
@@ -705,7 +706,7 @@ skip_entry(FILE *s, long offset, char **key)
 		tentry *e = entry_new(xdup(""));
 		rc = read_attrval_body(tmp1, tmp2, s, e);
 		entry_free(e);
-	}	
+	}
 
 	if (key) *key = k; else free(k);
 	g_string_free(tmp1, 1);
@@ -767,5 +768,6 @@ tparser ldapvi_parser = {
 	skip_entry,
 	read_rename,
 	read_delete,
-	read_modify
+	read_modify,
+	print_ldapvi_entry
 };

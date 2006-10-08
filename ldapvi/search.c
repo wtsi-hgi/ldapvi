@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,7 +44,7 @@ update_progress(LDAP *ld, int n, LDAPMessage *entry)
 			return;
 		usec = tv.tv_usec;
 	}
-	
+
 	putchar('\r');
 	for (i = 0; i < cols; i++) putchar(' ');
 
@@ -65,7 +66,7 @@ handle_result(LDAP *ld, LDAPMessage *result, int start, int n,
         int err;
         char *matcheddn;
         char *text;
-	
+
         rc = ldap_parse_result(ld, result, &err, &matcheddn, &text, 0, 0, 0);
         if (rc) ldaperr(ld, "ldap_parse_result");
 
@@ -179,11 +180,13 @@ search_subtree(FILE *s, LDAP *ld, GArray *offsets, char *base,
 			g_array_append_val(offsets, offset);
 			if (entroid)
 				e = entroid_set_message(ld, entroid, entry);
+			else
+				e = 0;
 			if (ldif)
 				print_ldif_message(
-					s, ld, entry, notty ? -1 : n, entroid);
+					s, ld, entry, notty ? -1 : n, e);
 			else
-				print_entry_message(s, ld, entry, n, entroid);
+				print_ldapvi_message(s, ld, entry, n, e);
 			n++;
 			if (!cmdline->quiet && !notty)
 				update_progress(ld, n, entry);

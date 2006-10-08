@@ -211,6 +211,21 @@ Action? [yYqQvVebrsf?] </tty>
       usually easier to read (less Base 64) and can also be entered
       directly into the editor.
     </p>
+    <ul>
+      <li><tt>+</tt> -- rewrite file to include schema comments</li>
+    </ul>
+    <p>
+      This will update the file to include schema comments and re-enter
+      the editor afterwards.  This works like
+      the <a href="#parameter-may"><tt>--may</tt></a> command line
+      option, but is based on the current contents of the file rather
+      than the original entries, useful when changing the class of an
+      entry.
+    </p>
+    <p>
+      Note that this command will rewrite the entire file and wipe out
+      all comments present before invoking it.
+    </p>
 
     <p name="key-b" title="Logging in">
       One way to bind to the LDAP server is to specify user name and

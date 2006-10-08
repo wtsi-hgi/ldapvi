@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,7 +75,7 @@ note_attributes(tattribute *a1, tattribute *a2, GPtrArray *mods)
 	GPtrArray *values;
 	LDAPMod *m;
 	int i;
-	
+
 	if (a1 && a2) {
 		compare_attributes(a1, a2, mods);
 		return;
@@ -309,12 +310,13 @@ rename_entry(tentry *entry, char *newdn, int deleteoldrdn)
 }
 
 static void
-update_clean_copy(GArray *offsets, char *key, FILE *s, tentry *cleanentry)
+update_clean_copy(
+	GArray *offsets, char *key, FILE *s, tentry *cleanentry, tparser *p)
 {
 	long pos = fseek(s, 0, SEEK_END);
 	if (pos == -1) syserr();
 	g_array_index(offsets, long, atoi(key)) = ftell(s);
-	print_entry_object(s, cleanentry, key);
+	p->print(s, cleanentry, key, 0);
 }
 
 /*
@@ -468,7 +470,7 @@ process_next_entry(
 			goto cleanup;
 		}
 		if (handler->rename(n, entry_dn(cleanentry), entry, userdata)
-		    == -1) 
+		    == -1)
 		{
 			rc = -2;
 			goto cleanup;
@@ -486,7 +488,7 @@ process_next_entry(
 			if (mods) ldap_mods_free(mods, 1);
 			if (rename)
 				update_clean_copy(
-					offsets, key, clean, cleanentry);
+					offsets, key, clean, cleanentry, p);
 			rc = -2;
 			goto cleanup;
 		}
@@ -567,7 +569,7 @@ process_deletions(tparser *p,
 	int ignore_nonleaf = 0;
 	int n_leaf;
 	int n_nonleaf;
-	
+
 	do {
 		if (ignore_nonleaf)
 			printf("Retrying %d failed deletion%s...\n",

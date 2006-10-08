@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -46,7 +47,7 @@ fdcp(int fdsrc, int fddst)
 {
 	int n;
 	char buf[4096];
-	
+
 	do {
 		if ( (n = read(fdsrc, buf, sizeof(buf))) == -1) syserr();
 		if (write(fddst, buf, n) != n) syserr();
@@ -58,7 +59,7 @@ cp(char *src, char *dst, off_t skip, int append)
 {
 	int fdsrc, fddst;
 	int flags = append ? O_WRONLY | O_APPEND : O_CREAT | O_EXCL | O_WRONLY;
-	
+
 	if ( (fdsrc = open(src, O_RDONLY)) == -1) syserr();
 	if (lseek(fdsrc, skip, SEEK_SET) == -1) syserr();
 	if ( (fddst = open(dst, flags, 0600)) == -1) syserr();
@@ -87,7 +88,7 @@ choose(char *prompt, char *charbag, char *help)
 {
 	struct termios term;
 	int c;
-	
+
 	if (tcgetattr(0, &term) == -1) syserr();
 	term.c_lflag &= ~ICANON;
         term.c_cc[VMIN] = 1;
@@ -113,7 +114,7 @@ line_number(char *pathname, long pos)
 	FILE *f;
 	long line = 1;
 	int c;
-	
+
 	if ( !(f = fopen(pathname, "r+"))) syserr();
 	while (pos > 0) {
 		switch ( c = getc_unlocked(f)) {
@@ -184,7 +185,7 @@ view(char *pathname)
 		fputs(cl, stdout);
 		fflush(stdout);
 	}
-	
+
 	switch ( (childpid = fork())) {
 	case -1:
 		syserr();

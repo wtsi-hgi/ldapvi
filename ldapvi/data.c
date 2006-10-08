@@ -1,4 +1,5 @@
-/* Copyright (c) 2003,2004,2005,2006 David Lichteblau
+/* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ * Copyright (c) 2003,2004,2005,2006 David Lichteblau
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -62,7 +63,7 @@ entry_free(tentry *entry)
 	GPtrArray *attributes = entry_attributes(entry);
 	int n = attributes->len;
 	int i;
-	
+
 	for (i = 0; i < n; i++)
 		attribute_free(g_ptr_array_index(attributes, i));
 	named_array_free((named_array *) entry);
@@ -93,7 +94,7 @@ attribute_free(tattribute *attribute)
 	GPtrArray *values = attribute_values(attribute);
 	int n = values->len;
 	int i;
-	
+
 	for (i = 0; i < n; i++)
 		g_array_free(g_ptr_array_index(values, i), 1);
 	named_array_free((named_array *) attribute);
