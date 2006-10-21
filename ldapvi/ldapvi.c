@@ -449,12 +449,37 @@ struct rebind_data {
 	LDAPURLDesc *seen;
 };
 
+static void
+toggle_sasl(bind_options *bo)
+{
+	if (bo->authmethod == LDAP_AUTH_SIMPLE) {
+		bo->authmethod = LDAP_AUTH_SASL;
+		puts("SASL authentication enabled.");
+		printf("SASL mechanism: %s (use '*' to change)\n",
+		       bo->sasl_mech ? bo->sasl_mech : "(none)");
+	} else {
+		bo->authmethod = LDAP_AUTH_SIMPLE;
+		puts("Simple authentication enabled.");
+	}
+}
+
+static void
+change_mechanism(bind_options *bo)
+{
+	if (bo->authmethod == LDAP_AUTH_SIMPLE) {
+		bo->authmethod = LDAP_AUTH_SASL;
+		puts("Switching to SASL authentication.");
+	}
+	bo->sasl_mech = getline("SASL mechanism", bo->sasl_mech);
+}
+
 static int
 rebind_callback(
 	LDAP *ld, const char *url, ber_tag_t request, int msgid, void *args)
 {
 	struct rebind_data *rebind_data = args;
 	LDAPURLDesc *urld;
+	bind_options bo = rebind_data->bind_options;
 
 	printf("Received referral to %s.\n", url);
 
@@ -473,15 +498,15 @@ rebind_callback(
 	       "Type '!' or 'y' to do so.\n",
 	       urld->lud_scheme, urld->lud_host, urld->lud_port);
 	for (;;) {
-		bind_options bo = rebind_data->bind_options;
 		bo.dialog = BD_ALWAYS;
 
-		switch (choose("Rebind?", "y!nqQ?", "(Type '?' for help.)")) {
+		switch (choose("Rebind?", "y!nB*qQ?", "(Type '?' for help.)"))
+		{
 		case '!':
                         bo.dialog = BD_NEVER;
 			/* fall through */
 		case 'y':
-			if (rebind(ld, &bo, 0, 0, 1) != 0) {
+			if (rebind(ld, &bo, 0, 0, 1) == 0) {
 				if (rebind_data->seen)
 					ldap_free_urldesc(rebind_data->seen);
 				rebind_data->seen = urld;
@@ -491,6 +516,12 @@ rebind_callback(
 		case 'n':
 			ldap_free_urldesc(urld);
 			return 0;
+		case '*':
+			change_mechanism(&bo);
+			break;
+		case 'B':
+			toggle_sasl(&bo);
+			break;
 		case 'q':
 			ldap_free_urldesc(urld);
 			return -1;
@@ -501,6 +532,8 @@ rebind_callback(
 			     "  y -- ask for user name and rebind\n"
 			     "  ! -- rebind using cached credentials\n"
 			     "  n -- don't login, just continue\n"
+			     "  B -- toggle SASL\n"
+			     "  * -- set SASL mechanism\n"
 			     "  q -- give up\n"
 			     "  Q -- give up and exit ldapvi\n"
 			     "  ? -- this help");
@@ -1544,32 +1577,6 @@ main_write_files(
 	return offsets;
 }
 
-static void
-toggle_sasl(bind_options *bo)
-{
-	if (bo->authmethod == LDAP_AUTH_SIMPLE) {
-		bo->authmethod = LDAP_AUTH_SASL;
-		puts("SASL authentication enabled.");
-		printf("SASL mechanism: %s (use '*' to change)\n",
-		       bo->sasl_mech ? bo->sasl_mech : "(none)");
-		puts("Type 'b' to log in.");
-	} else {
-		bo->authmethod = LDAP_AUTH_SIMPLE;
-		puts("Simple authentication enabled.  Type 'b' to log in.");
-	}
-}
-
-static void
-change_mechanism(bind_options *bo)
-{
-	if (bo->authmethod == LDAP_AUTH_SIMPLE) {
-		bo->authmethod = LDAP_AUTH_SASL;
-		puts("Switching to SASL authentication.");
-	}
-	bo->sasl_mech = getline("SASL mechanism", bo->sasl_mech);
-	puts("Type 'b' to log in.");
-}
-
 static int
 main_loop(LDAP *ld, cmdline *cmdline,
 	  tparser *parser, GArray *offsets, char *clean, char *data,
@@ -1627,9 +1634,11 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			break;
 		case '*':
 			change_mechanism(&cmdline->bind_options);
+			puts("Type 'b' to log in.");
 			break;
 		case 'B':
 			toggle_sasl(&cmdline->bind_options);
+			puts("Type 'b' to log in.");
 			break;
 		case 'r':
 			ldap_unbind_s(ld);
