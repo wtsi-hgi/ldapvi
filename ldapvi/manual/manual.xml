@@ -39,7 +39,7 @@
 	  OpenSSL or GnuTLS, choose using
 	  <tt>./configure --with-libcrypto</tt>
 	</li>
-	<li>readline</li>
+	<li>GNU readline 5.1</li>
       </ul>
     </p>
     <p>
@@ -724,6 +724,14 @@ wofuer was das doch gleich da?
 	  This option applies only to
 	  the <a href="#parameter-rename"><tt>--rename</tt></a> mode.
 	</p>
+      </parameter>
+      <parameter long="ldif" brief="Use LDIF syntax internally">
+	Use standard LDIF syntax in the editor.  The default is to use
+	ldapvi syntax.
+      </parameter>
+      <parameter long="ldapvi" brief="Use ldapvi syntax externally">
+	Use ldapvi syntax when reading and writing files.  The default
+	is to use LDIF syntax.
       </parameter>
     </section>
 
