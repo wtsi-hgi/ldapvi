@@ -83,6 +83,20 @@ fcopy(FILE *src, FILE *dst)
 	}
 }
 
+static void
+print_charbag(char *charbag)
+{
+	int i;
+	putchar('[');
+	for (i = 0; charbag[i]; i++) {
+		char c = charbag[i];
+		if (c > 32)
+			putchar(c);
+	}
+	putchar(']');
+}
+
+
 char
 choose(char *prompt, char *charbag, char *help)
 {
@@ -95,10 +109,15 @@ choose(char *prompt, char *charbag, char *help)
         term.c_cc[VTIME] = 0;
 	for (;;) {
 		if (tcsetattr(0, TCSANOW, &term) == -1) syserr();
-		printf("%s [%s] ", prompt, charbag);
+		fputs(prompt, stdout);
+		putchar(' ');
+		print_charbag(charbag);
+		putchar(' ');
 		if (strchr(charbag, c = getchar()))
 			break;
-		printf("\nPlease enter one of [%s].", charbag);
+		fputs("\nPlease enter one of ", stdout);
+		print_charbag(charbag);
+		putchar('\n');
 		if (help) printf("  %s", help);
 		putchar('\n');
 	}
@@ -170,29 +189,75 @@ edit_pos(char *pathname, long pos)
 	edit(pathname, pos > 0 ? line_number(pathname, pos) : -1);
 }
 
+static int
+invalidp(char *ti)
+{
+	return ti == 0 || ti == (char *) -1;
+}
+
 void
 view(char *pathname)
 {
 	int childpid;
 	int status;
-	char *vi;
-	char *cl;
+	char *pg;
+	char *clear = tigetstr("clear");
 
-	vi = getenv("PAGER");
-	if (!vi) vi = "less";
+	pg = getenv("PAGER");
+	if (!pg) pg = "less";
 
-	if ( cl = tigetstr("clear")) {
-		fputs(cl, stdout);
-		fflush(stdout);
-	}
+	if (!invalidp(clear))
+		putp(clear);
 
 	switch ( (childpid = fork())) {
 	case -1:
 		syserr();
 	case 0:
-		execlp(vi, vi, pathname, 0);
+		execlp(pg, pg, pathname, 0);
 		syserr();
 	}
+
+	if (waitpid(childpid, &status, 0) == -1) syserr();
+	if (!WIFEXITED(status) || WEXITSTATUS(status))
+		puts("pager died");
+}
+
+int
+pipeview(int *fd)
+{
+	int childpid;
+	char *pg;
+	char *clear = tigetstr("clear");
+	int fds[2];
+
+	pg = getenv("PAGER");
+	if (!pg) pg = "less";
+
+	if (!invalidp(clear))
+		putp(clear);
+
+	if (pipe(fds) == -1) syserr();
+
+	switch ( (childpid = fork())) {
+	case -1:
+		syserr();
+	case 0:
+		close(fds[1]);
+		dup2(fds[0], 0);
+		close(fds[0]);
+		execlp(pg, pg, 0);
+		syserr();
+	}
+
+	close(fds[0]);
+	*fd = fds[1];
+	return childpid;
+}
+
+void
+pipeview_wait(int childpid)
+{
+	int status;
 
 	if (waitpid(childpid, &status, 0) == -1) syserr();
 	if (!WIFEXITED(status) || WEXITSTATUS(status))
@@ -249,51 +314,72 @@ write_ldapvi_history()
 	free(filename);
 }
 
-GString *
-getline(char *prompt)
+char *
+getline(char *prompt, char *value)
 {
-	GString *result = g_string_sized_new(8);
-	char *str = readline(prompt);
-	if (str && *str) {
-		add_history(str);
-		g_string_append(result, str);
-	}
-	return result;
-}
-
-static GString *
-trivial_getline(char *prompt)
-{
-	GString *result = g_string_sized_new(8);
-	int c;
-
-	fputs(prompt, stdout);
-	for (;;) {
-		if ( (c = getchar()) == EOF) syserr();
-		if (c == '\n') break;
-		g_string_append_c(result, c);
-	}
-	return result;
+	tdialog d;
+	init_dialog(&d, DIALOG_DEFAULT, prompt, value);
+	dialog(0, &d, 1);
+	return d.value ? d.value : xdup("");
 }
 
 char *
 get_password()
 {
-	GString *buf = 0;
-	char *result;
-	struct termios term;
+	tdialog d;
+	init_dialog(&d, DIALOG_PASSWORD, "Password: ", "");
+	dialog(0, &d, 1);
+	return d.value ? d.value : xdup("");
+}
 
-	if (tcgetattr(0, &term) == -1) syserr();
-	term.c_lflag &= ~ECHO;
-	if (tcsetattr(0, TCSANOW, &term) == -1) syserr();
-	buf = trivial_getline("Password: ");
-	term.c_lflag |= ECHO;
-	if (tcsetattr(0, TCSANOW, &term) == -1) syserr();
-	putchar('\n');
+static char *readline_default;
 
-	result = buf->str;
-	g_string_free(buf, 0);
-	return result;
+static int
+cb_set_readline_default()
+{
+	rl_insert_text(readline_default);
+	return 0;
+}
+
+void
+display_password(void)
+{
+	int i;
+	char *backup = xalloc(rl_end + 1);
+	strncpy(backup, rl_line_buffer, rl_end);
+	for (i = 0; i < rl_end; i++)
+		rl_line_buffer[i] = '*';
+	rl_redisplay();
+	strncpy(rl_line_buffer, backup, rl_end);
+}
+
+static char *
+getline2(char *prompt, char *value, int password, int history)
+{
+	char *str;
+
+	if (password)
+		rl_redisplay_function = display_password;
+
+	readline_default = value;
+	rl_startup_hook = cb_set_readline_default;
+	str = readline(prompt);
+	rl_startup_hook = 0;
+
+	if (password)
+		rl_redisplay_function = rl_redisplay;
+
+	if (str && *str && history)
+		add_history(str);
+	return str;
+}
+
+void
+init_dialog(tdialog *d, enum dialog_mode mode, char *prompt, char *value)
+{
+	d->mode = mode;
+	d->prompt = prompt;
+	d->value = value;
 }
 
 char *
@@ -351,4 +437,271 @@ adjoin_ptr(GPtrArray *a, void *p)
 			return -1;
 	g_ptr_array_add(a, p);
 	return i;
+}
+
+void
+dumb_dialog(tdialog *d, int n)
+{
+	GString *prompt = g_string_new("");
+	int i;
+
+	for (i = 0; i < n; i++) {
+		g_string_assign(prompt, d[i].prompt);
+		g_string_append(prompt, ": ");
+		switch (d[i].mode) {
+		case DIALOG_DEFAULT:
+			d[i].value = getline2(prompt->str, d[i].value, 0, 1);
+			break;
+		case DIALOG_PASSWORD:
+			d[i].value = getline2(prompt->str, d[i].value, 1, 0);
+			break;
+		case DIALOG_CHALLENGE:
+			printf("%s: %s\n", prompt->str, d[i].value);
+			break;
+		}
+	}
+	g_string_free(prompt, 1);
+}
+
+enum dialog_rc {
+	dialog_continue, dialog_done, dialog_goto, dialog_relative,
+	dialog_help, dialog_clear
+};
+
+static Keymap dialog_keymap = 0;
+static Keymap dialog_empty_keymap = 0;
+static enum dialog_rc dialog_action;
+static int dialog_next;
+
+static int
+cb_view_pre_input()
+{
+	rl_done = 1;
+	return 0;
+}
+
+static int
+cb_dialog_done(int a, int b)
+{
+	rl_done = 1;
+	dialog_action = dialog_done;
+	return 42;
+}
+
+static int
+cb_dialog_goto(int a, int b)
+{
+	rl_done = 1;
+	dialog_action = dialog_goto;
+	dialog_next = a - 1;
+	return 42;
+}
+
+static int
+cb_dialog_prev(int a, int b)
+{
+	rl_done = 1;
+	dialog_action = dialog_relative;
+	dialog_next = - 1;
+	return 42;
+}
+
+static int
+cb_dialog_next(int a, int b)
+{
+	rl_done = 1;
+	dialog_action = dialog_relative;
+	dialog_next = 1;
+	return 42;
+}
+
+static int
+cb_dialog_help(int a, int b)
+{
+	rl_done = 1;
+	dialog_action = dialog_help;
+	return 42;
+}
+
+static int
+cb_dialog_clear(int a, int b)
+{
+	rl_done = 1;
+	dialog_action = dialog_clear;
+	return 42;
+}
+
+#define DIALOG_HELP							\
+"\nEdit the lines above using standard readline commands.\n"		\
+"Use RET to edit each line in turn.\n"					\
+"\n"									\
+"Special keys:\n"							\
+"  M-RET       Finish the dialog immediately.\n"			\
+"  C-p         Go back to the previous line.\n"				\
+"  C-n         Go to the next line (alias for RET).\n"			\
+"  M-g         With numeric prefix, go to the specified line.\n"	\
+"\n"									\
+"Non-password lines are saved in the history.  Standard readline\n"	\
+"bindings for history access include:\n"				\
+"  C-r         Incremental search through history.\n"			\
+"  <up>/<down> Previous/next history entry.\n"
+
+static void
+dialog_rebuild(char *up, char *clreos,
+	       char *header, char **prompts, tdialog *d, int n,
+	       int target, int help)
+{
+	int i;
+
+	putp(clreos);
+	if (header) {
+		putchar('\n');
+		fputs(header, stdout);
+		putchar('\n');
+		fputs("Type M-h for help on key bindings.", stdout);
+		putchar('\n');
+		putchar('\n');
+	}
+
+	rl_pre_input_hook = cb_view_pre_input;
+	for (i = 0; i < n; i++) {
+		int passwordp = d[i].mode == DIALOG_PASSWORD;
+		free(getline2(prompts[i], d[i].value, passwordp, 0));
+		putchar('\n');
+	}
+	rl_pre_input_hook = 0;
+
+	if (help) {
+		fputs(DIALOG_HELP, stdout);
+		for (i = 0; DIALOG_HELP[i]; i++)
+			if (DIALOG_HELP[i] == '\n')
+				putp(up);
+	}
+
+	for (i = 0; i < n - target; i++)
+		putp(up);
+}
+
+static void
+init_dialog_keymap(Keymap keymap)
+{
+	rl_bind_key_in_map('L' - '@', cb_dialog_clear, keymap);
+	rl_bind_key_in_map('P' - '@', cb_dialog_prev, keymap);
+	rl_bind_key_in_map('N' - '@', cb_dialog_next, keymap);
+	rl_bind_key_in_map(128 + '\r', cb_dialog_done, keymap);
+	rl_bind_key_in_map(128 + 'g', cb_dialog_goto, keymap);
+	rl_bind_key_in_map(128 + 'h', cb_dialog_help, keymap);
+}
+
+
+void
+dialog(char *header, tdialog *d, int n)
+{
+	int i;
+	char *up = tigetstr("cuu1");
+	char *clreos = tigetstr("ed");
+	char *clear = tigetstr("clear");
+	char *hsm = rl_variable_value("horizontal-scroll-mode");
+	Keymap original_keymap = rl_get_keymap();
+	int max = 0;
+	char **prompts;
+
+	if (n == 0)
+		return;
+
+	if (invalidp(up) || invalidp(clreos) || invalidp(clear)) {
+		puts("Dumb terminal.  Using fallback dialog.");
+		dumb_dialog(d, n);
+		return;
+	}
+
+	if (!dialog_keymap) {
+		rl_initialize();
+		dialog_keymap = rl_copy_keymap(original_keymap);
+		dialog_empty_keymap = rl_make_bare_keymap();
+		init_dialog_keymap(dialog_keymap);
+		init_dialog_keymap(dialog_empty_keymap);
+		dialog_empty_keymap[27] = dialog_keymap[27];
+	}
+
+	rl_variable_bind("horizontal-scroll-mode", "on");
+	rl_inhibit_completion = 1; /* fixme */
+
+	for (i = 0; i < n; i++)
+		max = MAX(max, strlen(d[i].prompt));
+	prompts = xalloc(sizeof(char *) * n);
+
+	for (i = 0; i < n; i++) {
+		char *prompt = d[i].prompt;
+		int len = strlen(prompt);
+		char *str = xalloc(max + 3);
+		memset(str, ' ', max);
+		strcpy(str + max - len, prompt);
+		strcpy(str + max, ": ");
+		prompts[i] = str;
+
+		if (d[i].value)
+			d[i].value = xdup(d[i].value);
+	}
+
+	dialog_rebuild(up, clreos, header, prompts, d, n, 0, 0);
+
+	i = 0;
+	for (;;) {
+		char *orig = d[i].value;
+		int passwordp = d[i].mode == DIALOG_PASSWORD;
+
+		dialog_action = dialog_continue;
+		if (d[i].mode == DIALOG_CHALLENGE)
+			rl_set_keymap(dialog_empty_keymap);
+		else
+			rl_set_keymap(dialog_keymap);
+		d[i].value = getline2(prompts[i], orig, passwordp, !passwordp);
+		if (orig)
+			free(orig);
+
+		switch (dialog_action) {
+		case dialog_continue:
+			dialog_next = i + 1;
+			break;
+		case dialog_clear: /* fall through */
+		case dialog_help:
+			dialog_next = i;
+			break;
+		case dialog_relative:
+			dialog_next += i;
+			/* fall through */
+		case dialog_goto:
+			if (dialog_next < 0 || dialog_next >= n)
+				dialog_next = i;
+			break;
+		case dialog_done:
+			dialog_next = n;
+			break;
+		}
+
+		if (dialog_action == dialog_clear)
+			putp(clear);
+		else {
+			if (header)
+				i += 4;
+			if (dialog_action != dialog_continue)
+				i--;
+			do putp(up); while (i--);
+		}
+
+		dialog_rebuild(up, clreos, header, prompts, d, n, dialog_next,
+			       dialog_action == dialog_help);
+		if (dialog_next >= n)
+			break;
+		i = dialog_next;
+	}
+
+	for (i = 0; i < n; i++)
+		free(prompts[i]);
+	free(prompts);
+
+	rl_set_keymap(original_keymap);
+	rl_variable_bind("horizontal-scroll-mode", hsm);
+	rl_inhibit_completion = 0;
 }

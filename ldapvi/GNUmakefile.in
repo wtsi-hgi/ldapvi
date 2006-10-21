@@ -9,7 +9,7 @@ all: ldapvi
 
 dist: ldapvi ldapvi.1
 
-ldapvi: ldapvi.o data.o diff.o error.o misc.o parse.o port.o print.o search.o base64.o arguments.o parseldif.o schema.c
+ldapvi: ldapvi.o data.o diff.o error.o misc.o parse.o port.o print.o search.o base64.o arguments.o parseldif.o schema.c sasl.o
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.c common.h

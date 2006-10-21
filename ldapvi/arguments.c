@@ -1,5 +1,7 @@
 /* -*- mode: c; c-backslash-column: 78; c-backslash-max-column: 78 -*-
+ *
  * Copyright (c) 2003,2004,2005,2006 David Lichteblau
+ * Copyright (c) 2006 Perry Nguyen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -36,7 +38,21 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "Connection options:\n"							      \
 "  -h, --host URL         Server.\n"					      \
 "  -D, --user USER        Search filter or DN: User to bind as.     [1]\n"    \
-"  -w, --password SECRET  USER's password.\n"				      \
+"                         Sets --bind simple.\n"                              \
+"  -w, --password SECRET  Password (also valid for SASL).\n"		      \
+"      --bind [simple,sasl]\n"						      \
+"                         Disable or enable SASL.\n"			      \
+"      --bind-dialog [never,auto,always]\n"				      \
+"                         Interactive login dialog.\n"			      \
+"\n"									      \
+"SASL options (these parameters set --bind sasl):\n"                          \
+"  -I, --sasl-interactive Set --bind-dialog always.\n"		              \
+"  -O, --sasl-secprops P  SASL security properties.\n"			      \
+"  -Q, --sasl-quiet       Set --bind-dialog never.\n"		              \
+"  -R, --sasl-realm    R  SASL realm.\n"				      \
+"  -U, --sasl-authcid AC  SASL authentication identity.\n"		      \
+"  -X, --sasl-authzid AZ  SASL authorization identity.\n"		      \
+"  -Y, --sasl-mech  MECH  SASL mechanism.\n"				      \
 "\n"									      \
 "Search parameters:\n"							      \
 "  -b, --base DN          Search base.\n"				      \
@@ -44,7 +60,7 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "  -S, --sort KEYS        Sort control (critical).\n"			      \
 "\n"									      \
 "Miscellaneous options:\n"						      \
-"      --add              (Only with --in, --ldapmodify:)\n"                  \
+"      --add              (Only with --in, --ldapmodify:)\n"		      \
 "                         Treat attrval records as new entries to add.\n"     \
 "  -o, --class OBJCLASS   Class to add.  Can be repeated.  Implies -A.\n"     \
 "      --config           Print parameters in ldap.conf syntax.\n"	      \
@@ -56,6 +72,7 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "      --encoding [ASCII|UTF-8|binary]\n"				      \
 "                         The encoding to allow.  Default is UTF-8.\n"	      \
 "  -H, --help             This help.\n"					      \
+"      --ldap-conf        Always read libldap configuration.\n"		      \
 "  -m, --may              Show missing optional attributes as comments.\n"    \
 "  -M, --managedsait      manageDsaIT control (critical).\n"		      \
 "      --noquestions      Commit without asking for confirmation.\n"	      \
@@ -97,7 +114,8 @@ enum ldapvi_option_numbers {
 	OPTION_OUT, OPTION_IN, OPTION_DELETE, OPTION_RENAME, OPTION_MODRDN,
 	OPTION_NOQUESTIONS, OPTION_LDAPSEARCH, OPTION_LDAPMODIFY,
 	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN, OPTION_ADD,
-	OPTION_CONFIG
+	OPTION_CONFIG, OPTION_READ, OPTION_LDAP_CONF, OPTION_BIND,
+	OPTION_BIND_DIALOG
 };
 
 static struct poptOption options[] = {
@@ -105,15 +123,24 @@ static struct poptOption options[] = {
 	{"scope",	's', POPT_ARG_STRING, 0, 's', 0, 0},
 	{"base",	'b', POPT_ARG_STRING, 0, 'b', 0, 0},
 	{"user",	'D', POPT_ARG_STRING, 0, 'D', 0, 0},
+	{"sasl-interactive",'I',0, 0, 'I', 0, 0},
+	{"sasl-quiet"  ,'Q',0, 0, 'Q', 0, 0},
+	{"sasl-secprops",'O', POPT_ARG_STRING, 0, 'O', 0, 0},
+	{"sasl-realm",	'R', POPT_ARG_STRING, 0, 'R', 0, 0},
+	{"sasl-mech",	'Y', POPT_ARG_STRING, 0, 'Y', 0, 0},
+	{"sasl-authzid",'X', POPT_ARG_STRING, 0, 'X', 0, 0},
+	{"sasl-authcid",'U', POPT_ARG_STRING, 0, 'U', 0, 0},
 	{"password",	'w', POPT_ARG_STRING, 0, 'w', 0, 0},
 	{"chase",	'C', POPT_ARG_STRING, 0, 'C', 0, 0},
 	{"deref",	'a', POPT_ARG_STRING, 0, 'a', 0, 0},
 	{"sort",	'S', POPT_ARG_STRING, 0, 'S', 0, 0},
 	{"class",	'o', POPT_ARG_STRING, 0, 'o', 0, 0},
-	{"root",	'R', POPT_ARG_STRING, 0, 'R', 0, 0},
+	{"read",	  0, POPT_ARG_STRING, 0, OPTION_READ, 0, 0},
 	{"profile",	'p', POPT_ARG_STRING, 0, 'p', 0, 0},
 	{"tls",		  0, POPT_ARG_STRING, 0, OPTION_TLS, 0, 0},
 	{"encoding",	  0, POPT_ARG_STRING, 0, OPTION_ENCODING, 0, 0},
+	{"bind",	  0, POPT_ARG_STRING, 0, OPTION_BIND, 0, 0},
+	{"bind-dialog",	  0, POPT_ARG_STRING, 0, OPTION_BIND_DIALOG, 0, 0},
 	{"continuous",	'c', 0, 0, 'c', 0, 0},
 	{"continue",	'c', 0, 0, 'c', 0, 0},
 	{"empty",	'A', 0, 0, 'A', 0, 0},
@@ -130,6 +157,7 @@ static struct poptOption options[] = {
 	{"add",		  0, 0, 0, OPTION_ADD, 0, 0},
 	{"config",	  0, 0, 0, OPTION_CONFIG, 0, 0},
 	{"noquestions",   0, 0, 0, OPTION_NOQUESTIONS, 0, 0},
+	{"ldap-conf",     0, 0, 0, OPTION_LDAP_CONF, 0, 0},
 	{"ldif",	  0, 0, 0, OPTION_LDIF, 0, 0},
 	{"ldapvi",	  0, 0, 0, OPTION_LDAPVI, 0, 0},
 	{"out",		  0, 0, 0, OPTION_OUT, 0, 0},
@@ -149,8 +177,16 @@ static struct poptOption options[] = {
 void
 usage(int fd, int rc)
 {
-	if (fd != -1) dup2(fd, 1);
-	puts(USAGE);
+	if (fd == -1 && rc == 0 && isatty(1)) {
+		int fd;
+		int pid = pipeview(&fd);
+		write(fd, USAGE, strlen(USAGE));
+		close(fd);
+		pipeview_wait(pid);
+	} else {
+		if (fd != -1) dup2(fd, 1);
+		puts(USAGE);
+	}
 	if (rc != -1) exit(rc);
 }
 
@@ -162,8 +198,6 @@ init_cmdline(cmdline *cmdline)
 	cmdline->scope = LDAP_SCOPE_SUBTREE;
 	cmdline->filter = 0;
 	cmdline->attrs = 0;
-	cmdline->user = 0;
-	cmdline->password = 0;
 	cmdline->quiet = 0;
 	cmdline->referrals = 1;
 	cmdline->classes = 0;
@@ -184,6 +218,17 @@ init_cmdline(cmdline *cmdline)
 	cmdline->rename_dor = 0;
 	cmdline->schema_comments = 0;
 	cmdline->continuous = 0;
+	cmdline->profileonlyp = 0;
+
+        cmdline->bind_options.authmethod = LDAP_AUTH_SIMPLE;
+        cmdline->bind_options.dialog = BD_AUTO;
+        cmdline->bind_options.user = 0;
+        cmdline->bind_options.password = 0;
+        cmdline->bind_options.sasl_authcid = 0;
+        cmdline->bind_options.sasl_authzid = 0;
+        cmdline->bind_options.sasl_mech = 0;
+        cmdline->bind_options.sasl_realm = 0;
+        cmdline->bind_options.sasl_secprops = 0;
 }
 
 static void
@@ -213,10 +258,11 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		g_ptr_array_add(result->basedns, arg);
 		break;
 	case 'D':
-		result->user = arg;
+		result->bind_options.authmethod = LDAP_AUTH_SIMPLE;
+		result->bind_options.user = *arg ? arg : 0;
 		break;
 	case 'w':
-		result->password = arg;
+		result->bind_options.password = arg;
 		break;
 	case 'd':
 		result->discover = 1;
@@ -348,7 +394,7 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 	case 'r':
 		result->rename_dor = 1;
 		break;
-	case 'R':
+	case OPTION_READ:
 		g_ptr_array_add(result->basedns, arg);
 		result->scope = LDAP_SCOPE_BASE;
 		result->filter = "(objectclass=*)";
@@ -367,18 +413,71 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		else if (!strcasecmp(arg, "always"))
 			result->deref = LDAP_DEREF_ALWAYS;
 		else {
-			fprintf(stderr, "--deref invalid%s\n", arg);
+			fprintf(stderr, "--deref invalid: %s\n", arg);
 			usage(2, 1);
 		}
 		break;
 	case 'v':
 		result->verbose = 1;
 		break;
+	case OPTION_BIND:
+		if (!strcasecmp(arg, "simple"))
+			result->bind_options.authmethod = LDAP_AUTH_SIMPLE;
+		else if (!strcasecmp(arg, "sasl"))
+			result->bind_options.authmethod = LDAP_AUTH_SASL;
+		else {
+			fprintf(stderr, "--bind invalid: %s\n", arg);
+			usage(2, 1);
+		}
+		break;
+	case OPTION_BIND_DIALOG:
+		if (!strcasecmp(arg, "always"))
+			result->bind_options.dialog = BD_ALWAYS;
+		else if (!strcasecmp(arg, "auto"))
+			result->bind_options.dialog = BD_AUTO;
+		else if (!strcasecmp(arg, "never"))
+			result->bind_options.dialog = BD_NEVER;
+		else {
+			fprintf(stderr, "--bind-dialog invalid: %s\n", arg);
+			usage(2, 1);
+		}
+		break;
+	case 'I':
+		result->bind_options.authmethod = LDAP_AUTH_SASL;
+		result->bind_options.dialog = BD_ALWAYS;
+		break;
+	case 'Q':
+		result->bind_options.authmethod = LDAP_AUTH_SASL;
+		result->bind_options.dialog = BD_NEVER;
+		break;
+	case 'U':
+		result->bind_options.authmethod = LDAP_AUTH_SASL;
+		result->bind_options.sasl_authcid = arg;
+		break;
+	case 'X':
+		result->bind_options.authmethod = LDAP_AUTH_SASL;
+		result->bind_options.sasl_authzid = arg;
+		break;
+	case 'Y':
+		result->bind_options.authmethod = LDAP_AUTH_SASL;
+		result->bind_options.sasl_mech = arg;
+		break;
+	case 'R':
+		result->bind_options.authmethod = LDAP_AUTH_SASL;
+		result->bind_options.sasl_realm = arg;
+		break;
+	case 'O':
+		result->bind_options.authmethod = LDAP_AUTH_SASL;
+		result->bind_options.sasl_secprops = arg;
+		break;
 	case '!':
 		result->noninteractive = 1;
 		break;
 	case OPTION_NOQUESTIONS:
 		result->noquestions = 1;
+		break;
+	case OPTION_LDAP_CONF:
+		result->profileonlyp = 0;
 		break;
 	case 'p':
 		parse_configuration(arg, result, ctrls);
@@ -492,6 +591,7 @@ parse_configuration(char *profile_name, cmdline *result, GPtrArray *ctrls)
 		exit(1);
 	}
 	if (profile_found) {
+		result->profileonlyp = 1;
 		GPtrArray *attributes = entry_attributes(profile_found);
 		int i;
 		for (i = 0; i < attributes->len; i++) {
@@ -499,7 +599,6 @@ parse_configuration(char *profile_name, cmdline *result, GPtrArray *ctrls)
 			parse_profile_line(a, result, ctrls);
 		}
 		entry_free(profile_found);
-		if (setenv("LDAPNOINIT", "thanks", 1)) syserr();
 	} else if (profile_requested) {
 		fprintf(stderr,
 			"Error: Configuration profile not found: '%s'.\n",
@@ -585,6 +684,10 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 	default:
 		abort();
 	}		
+
+	if (result->profileonlyp)
+		if (setenv("LDAPNOINIT", "thanks", 1)) syserr();
+
 	/* don't free! */
 /* 	poptFreeContext(ctx); */
 }

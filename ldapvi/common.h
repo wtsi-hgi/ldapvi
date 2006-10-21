@@ -1,5 +1,7 @@
 /* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ *
  * Copyright (c) 2003,2004,2005,2006 David Lichteblau
+ * Copyright (c) 2006 Perry Nguyen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,6 +21,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <glib.h>
+/* fixme: */
+#define LDAP_DEPRECATED 1
 #include <ldap.h>
 #include <ldap_schema.h>
 #include <stdio.h>
@@ -72,14 +76,35 @@ enum ldapvi_mode {
 	ldapvi_mode_edit, ldapvi_mode_in, ldapvi_mode_out,
 	ldapvi_mode_delete, ldapvi_mode_rename, ldapvi_mode_modrdn
 };
+
+enum bind_dialog {
+	BD_NEVER = LDAP_SASL_QUIET,
+	BD_AUTO = LDAP_SASL_AUTOMATIC,
+	BD_ALWAYS = LDAP_SASL_INTERACTIVE
+};
+
+/* FIXME (?): For now, we recklessly leak all strings stored in
+ * bind_options when reauthentication is performed and new values are
+ * stored. */
+typedef struct bind_options {
+        ber_tag_t authmethod;   /* LDAP_AUTH_SASL or LDAP_AUTH_NONE */
+        enum bind_dialog dialog;
+        char *user;             /* DN or user search filter */
+        char *password;         /* Simple or SASL passwd */
+        char *sasl_authcid;
+        char *sasl_authzid;
+        char *sasl_mech;
+        char *sasl_realm;
+        char *sasl_secprops;
+} bind_options;
+
 typedef struct cmdline {
 	char *server;
 	GPtrArray *basedns;
 	int scope;
 	char *filter;
 	char **attrs;
-	char *user;
-	char *password;
+	bind_options bind_options;
 	int quiet;
 	int referrals;
 	GPtrArray *classes;
@@ -104,6 +129,7 @@ typedef struct cmdline {
 	char *in_file;
 	int schema_comments;
 	int continuous;
+	int profileonlyp;
 } cmdline;
 
 void init_cmdline(cmdline *cmdline);
@@ -225,6 +251,15 @@ int process_immediate(tparser *, thandler *, void *, FILE *, long, char *);
 /*
  * misc.c
  */
+enum dialog_mode {
+	DIALOG_DEFAULT, DIALOG_PASSWORD, DIALOG_CHALLENGE
+};
+typedef struct dialog {
+	enum dialog_mode mode;
+	char *prompt;
+	char *value;
+} tdialog;
+
 int carray_cmp(GArray *a, GArray *b);
 int carray_ptr_cmp(const void *aa, const void *bb);
 void cp(char *src, char *dst, off_t skip, int append);
@@ -233,16 +268,20 @@ char choose(char *prompt, char *charbag, char *help);
 void edit_pos(char *pathname, long pos);
 void edit(char *pathname, long line);
 void view(char *pathname);
+int pipeview(int *fd);
+void pipeview_wait(int pid);
 char *home_filename(char *name);
 void read_ldapvi_history(void);
 void write_ldapvi_history(void);
-GString *getline(char *prompt);
+char *getline(char *prompt, char *value);
 char *get_password();
 char *append(char *a, char *b);
 void *xalloc(size_t size);
 char *xdup(char *str);
 int adjoin_str(GPtrArray *, char *);
 int adjoin_ptr(GPtrArray *, void *);
+void init_dialog(tdialog *, enum dialog_mode, char *, char *);
+void dialog(char *header, tdialog *, int);
 
 /*
  * schema.c
@@ -312,3 +351,22 @@ void print_base64(unsigned char const *src, size_t srclength, FILE *s);
 void g_string_append_base64(
 	GString *string, unsigned char const *src, size_t srclength);
 int read_base64(char const *src, unsigned char *target, size_t targsize);
+
+/*
+ * sasl.c
+ */
+typedef struct sasl_defaults {
+	bind_options *bind_options;
+	GPtrArray *scratch;
+	char *pathname;
+	int fd, out, err;
+} tsasl_defaults;
+
+void init_sasl_redirection(tsasl_defaults *, char *);
+void enable_sasl_redirection(tsasl_defaults *);
+void disable_sasl_redirection(tsasl_defaults *);
+void finish_sasl_redirection(tsasl_defaults *);
+
+tsasl_defaults *sasl_defaults_new(bind_options *bind_options);
+void sasl_defaults_free(tsasl_defaults *sd);
+int ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *defaults, void *p);

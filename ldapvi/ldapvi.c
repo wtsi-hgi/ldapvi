@@ -1,5 +1,7 @@
 /* -*- show-trailing-whitespace: t; indent-tabs: t -*-
+ *
  * Copyright (c) 2003,2004,2005,2006 David Lichteblau
+ * Copyright (c) 2006 Perry Nguyen
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,6 +27,7 @@ static void parse_file(
 	FILE *, tparser *, thandler *, void *, handler_entry, void *, int);
 static void cut_datafile(char *, long, cmdline *);
 static int write_file_header(FILE *, cmdline *);
+static int rebind(LDAP *, bind_options *, int, char *, int);
 
 static int
 compare(tparser *p, thandler *handler, void *userdata, GArray *offsets,
@@ -442,21 +445,15 @@ statistics_rename0(
  * **************************************** */
 
 struct rebind_data {
-	char *user;
-	char *password;
+        bind_options bind_options;
 	LDAPURLDesc *seen;
 };
-
-static char *login(
-	LDAP *ld, char *user, char *password, int register_callback);
 
 static int
 rebind_callback(
 	LDAP *ld, const char *url, ber_tag_t request, int msgid, void *args)
 {
 	struct rebind_data *rebind_data = args;
-	char *user = rebind_data->user;
-	char *password = rebind_data->password;
 	LDAPURLDesc *urld;
 
 	printf("Received referral to %s.\n", url);
@@ -476,12 +473,15 @@ rebind_callback(
 	       "Type '!' or 'y' to do so.\n",
 	       urld->lud_scheme, urld->lud_host, urld->lud_port);
 	for (;;) {
+		bind_options bo = rebind_data->bind_options;
+		bo.dialog = BD_ALWAYS;
+
 		switch (choose("Rebind?", "y!nqQ?", "(Type '?' for help.)")) {
-		case 'y':
-			user = password = 0;
-			/* fall through */
 		case '!':
-			if (login(ld, user, password, 0)) {
+                        bo.dialog = BD_NEVER;
+			/* fall through */
+		case 'y':
+			if (rebind(ld, &bo, 0, 0, 1) != 0) {
 				if (rebind_data->seen)
 					ldap_free_urldesc(rebind_data->seen);
 				rebind_data->seen = urld;
@@ -539,45 +539,138 @@ cleanup:
 	return dn;
 }
 
-static int
-rebind(LDAP *ld, char *user, char *password, int register_callback, char **dn)
+static void
+ensure_tmp_directory(char *dir)
 {
-	int free_password = 0;
+	if (strcmp(dir, "/tmp/ldapvi-XXXXXX")) return;
+	mkdtemp(dir);
+	on_exit((on_exit_function) cleanup, dir);
+	signal(SIGTERM, cleanup_signal);
+	signal(SIGINT, cleanup_signal);
+	signal(SIGPIPE, SIG_IGN);
+}
+
+static int
+rebind_sasl(LDAP *ld, bind_options *bind_options, char *dir, int verbose)
+{
+	tsasl_defaults *defaults = sasl_defaults_new(bind_options);
+	int rc;
+	int sasl_mode;
+
+	switch (bind_options->dialog) {
+	case BD_NEVER: sasl_mode = LDAP_SASL_QUIET; break;
+	case BD_AUTO: sasl_mode = LDAP_SASL_AUTOMATIC; break;
+	case BD_ALWAYS: sasl_mode = LDAP_SASL_INTERACTIVE; break;
+	default: abort();
+	}
+
+	if (dir) {
+		ensure_tmp_directory(dir);
+		init_sasl_redirection(defaults, append(dir, "/sasl"));
+	}
+
+	rc = ldap_sasl_interactive_bind_s(
+		ld, bind_options->user, bind_options->sasl_mech, NULL,
+		NULL, sasl_mode, ldapvi_sasl_interact, defaults);
+
+	sasl_defaults_free(defaults);
+	if (defaults->fd != -1) {
+		finish_sasl_redirection(defaults);
+		free(defaults->pathname);
+	}
+
+	if (rc != LDAP_SUCCESS) {
+		ldap_perror(ld, "ldap_sasl_interactive_bind_s");
+		return -1;
+	}
+
+	if (verbose)
+		printf("Bound as authzid=%s, authcid=%s.\n",
+		       bind_options->sasl_authzid,
+		       bind_options->sasl_authcid);
+	return 0;
+}
+
+static int
+rebind_simple(LDAP *ld, bind_options *bo, int verbose)
+{
+	if (bo->dialog == BD_ALWAYS
+	    || (bo->dialog == BD_AUTO && bo->user && !bo->password))
+	{
+		tdialog d[2];
+		init_dialog(d, DIALOG_DEFAULT, "Filter or DN", bo->user);
+		init_dialog(d + 1, DIALOG_PASSWORD, "Password", bo->password);
+		dialog("--- Login", d, 2);
+		bo->user = d[0].value;
+		bo->password = d[1].value;
+	}
+	if (bo->user && bo->user[0] == '(')
+		/* user is a search filter, not a name */
+		if ( !(bo->user = find_user(ld, bo->user)))
+			return -1;
+	if (ldap_bind_s(ld, bo->user, bo->password, LDAP_AUTH_SIMPLE)) {
+		ldap_perror(ld, "ldap_bind");
+		return -1;
+	}
+	if (verbose)
+		printf("Bound as %s.\n", bo->user);
+	return 0;
+}
+
+static int
+rebind(LDAP *ld, bind_options *bind_options, int register_callback,
+       char *dir, int verbose)
+{
 	int rc = -1;
 	struct rebind_data *rebind_data = xalloc(sizeof(struct rebind_data));
 
-	if (user && !password) {
-		password = get_password();
-		free_password = 1;
+	switch (bind_options->authmethod) {
+	case LDAP_AUTH_SASL:
+		if (rebind_sasl(ld, bind_options, dir, verbose))
+			return -1;
+		break;
+	case LDAP_AUTH_SIMPLE:
+		if (rebind_simple(ld, bind_options, verbose))
+			return -1;
+		break;
 	}
-	if (user && user[0] == '(')
-		/* user is a search filter, not a name */
-		if ( !(user = find_user(ld, user)))
-			goto cleanup;
-	if (ldap_bind_s(ld, user, password, LDAP_AUTH_SIMPLE)) {
-		ldap_perror(ld, "ldap_bind");
-		goto cleanup;
-	}
-	rc = 0;
-	if (dn) *dn = user;
 
 	if (register_callback) {
-		rebind_data->user = user;
-		rebind_data->password = xdup(password);
+		rebind_data->bind_options = *bind_options;
+		rebind_data->bind_options.password
+			= xdup(bind_options->password);
 		rebind_data->seen = 0;
 		if (ldap_set_rebind_proc(ld, rebind_callback, rebind_data))
 			ldaperr(ld, "ldap_set_rebind_proc");
 	}
+	return 0;
+}
 
-cleanup:
-	if (free_password)
-		free(password);
-	return rc;
+void
+init_sasl_arguments(LDAP *ld, bind_options *bind_options)
+{
+	if (!bind_options->sasl_mech)
+		ldap_get_option(ld,
+				LDAP_OPT_X_SASL_MECH,
+				&bind_options->sasl_mech);
+	if (!bind_options->sasl_realm)
+		ldap_get_option(ld,
+				LDAP_OPT_X_SASL_REALM,
+				&bind_options->sasl_realm);
+	if (!bind_options->sasl_authcid)
+		ldap_get_option(ld,
+				LDAP_OPT_X_SASL_AUTHCID,
+				&bind_options->sasl_authcid);
+	if (!bind_options->sasl_authzid)
+		ldap_get_option(ld,
+				LDAP_OPT_X_SASL_AUTHZID,
+				&bind_options->sasl_authzid);
 }
 
 static LDAP *
-do_connect(char *server, char *user, char *password,
-	   int referrals, int starttls, int tls, int deref)
+do_connect(char *server, bind_options *bind_options,
+	   int referrals, int starttls, int tls, int deref, int profileonlyp,
+	   char *dir)
 {
 	LDAP *ld = 0;
 	int rc = 0;
@@ -589,21 +682,27 @@ do_connect(char *server, char *user, char *password,
 		strcpy(url + 7, server);
 		server = url;
 	}
-	if (ldap_set_option(ld, LDAP_OPT_X_TLS_REQUIRE_CERT, (void *) &tls))
-		ldaperr(ld, "ldap_set_option(LDAP_OPT_X_TLS)");
+
+	if (ldap_set_option(0, LDAP_OPT_X_TLS_REQUIRE_CERT, (void *) &tls))
+		ldaperr(0, "ldap_set_option(LDAP_OPT_X_TLS)");
 	if ( rc = ldap_initialize(&ld, server)) {
 		fprintf(stderr, "ldap_initialize: %s\n", ldap_err2string(rc));
 		exit(1);
 	}
+	if (!profileonlyp)
+		init_sasl_arguments(ld, bind_options);
 	if (ldap_set_option(ld, LDAP_OPT_PROTOCOL_VERSION, &drei))
 		ldaperr(ld, "ldap_set_option(LDAP_OPT_PROTOCOL_VERSION)");
 	if (starttls)
 		if (ldap_start_tls_s(ld, 0, 0))
 			ldaperr(ld, "ldap_start_tls_s");
-	if (rebind(ld, user, password, 1, 0) == -1) {
+	if (rebind(ld, bind_options, 1, dir, 0) == -1) {
 		ldap_unbind_s(ld);
 		return 0;
 	}
+	/* after initial bind, always ask interactively (except in '!' rebinds,
+	 * which are special-cased): */
+	bind_options->dialog = BD_ALWAYS;
 	if (ldap_set_option(ld, LDAP_OPT_REFERRALS,
                             referrals ? LDAP_OPT_ON : LDAP_OPT_OFF))
 		ldaperr(ld, "ldap_set_option(LDAP_OPT_REFERRALS)");
@@ -613,18 +712,12 @@ do_connect(char *server, char *user, char *password,
 	return ld;
 }
 
-static char *
-login(LDAP *ld, char *user, char *password, int register_callback)
-{
-	char *dn;
-	if (!user) user = getline("Filter or DN: ")->str;
-	if (rebind(ld, user, password, register_callback, &dn) == 0)
-		printf("OK, bound as %s.\n", dn);
-	else
-		user = 0;
-	return user;
-}
-
+/*
+ * fixme: brauchen wir das mit dem user?  dann sollten wir hier noch
+ * sasl support vorsehen
+ *
+ * ldapvi-Kommandozeile konnte auch nicht schaden
+ */
 static int
 save_ldif(tparser *parser, GArray *offsets, char *clean, char *data,
 	  char *server, char *user, int managedsait)
@@ -819,6 +912,7 @@ commit(tparser *p, LDAP *ld, GArray *offsets, char *clean, char *data,
 	case 0:
 		if (!cmdline->quiet)
 			puts("Done.");
+		write_ldapvi_history();
 		exit(0);
 	case -1:
 		yourfault("unexpected syntax error!");
@@ -920,6 +1014,7 @@ entroid_set_entry(LDAP *ld, tentroid *entroid, tentry *entry)
 	values = attribute_values(oc);
 	for (i = 0; i < values->len; i++) {
 		GArray *av = g_ptr_array_index(values, i);
+		LDAPObjectClass *cls;
 
 		{
 			char zero = 0;
@@ -928,8 +1023,7 @@ entroid_set_entry(LDAP *ld, tentroid *entroid, tentry *entry)
 			av->len--;
 		}
 
-		LDAPObjectClass *cls
-			= entroid_request_class(entroid, av->data);
+		cls = entroid_request_class(entroid, av->data);
 		if (!cls) {
 			g_string_append(entroid->comment, "# ");
 			g_string_append(entroid->comment, entroid->error->str);
@@ -1074,7 +1168,7 @@ offline_diff(tparser *p, char *a, char *b)
 void
 write_config(LDAP *ld, FILE *f, cmdline *cmdline)
 {
-	char *user = cmdline->user;
+	char *user = cmdline->bind_options.user;
 	char *server = cmdline->server;
 	int limit;
 
@@ -1333,10 +1427,56 @@ can_seek(FILE *s)
 	return 1;
 }
 
+static int
+copy_sasl_output(FILE *out, char *sasl)
+{
+	struct stat st;
+	FILE *in;
+	int have_sharpsign = 0;
+	int line = 0;
+	int c;
+
+	if (lstat(sasl, &st) == -1) return;
+	if ( !(in = fopen(sasl, "r"))) syserr();
+
+	if (st.st_size > 0) {
+		fputs("\n# SASL output:\n", out);
+		line += 2;
+	}
+	for (;;) {
+		switch ( c = getc_unlocked(in)) {
+		case 0:
+		case '\r':
+			break;
+		case '\n':
+			if (!have_sharpsign)
+				fputc('#', out);
+			line++;
+			have_sharpsign = 0;
+			fputc(c, out);
+			break;
+		case EOF:
+			if (have_sharpsign) {
+				line++;
+				fputc('\n', out);
+			}
+			if (fclose(in) == EOF) syserr();
+			return line;
+		default:
+			if (!have_sharpsign) {
+				have_sharpsign = 1;
+				fputs("# ", out);
+			}
+			fputc(c, out);
+		}
+	}
+}
+
 static GArray *
 main_write_files(
 	LDAP *ld, cmdline *cmdline,
-	char *clean, char *data, GPtrArray *ctrls,
+	char *clean, char *data, char *sasl,
+	GPtrArray *ctrls,
 	FILE *source,
 	int *nlines)
 {
@@ -1346,6 +1486,7 @@ main_write_files(
 
 	if ( !(s = fopen(data, "w"))) syserr();
 	line = write_file_header(s, cmdline);
+	line += copy_sasl_output(s, sasl);
 
 	if (cmdline->mode == ldapvi_mode_in) {
 		tparser *p = &ldif_parser;
@@ -1403,6 +1544,32 @@ main_write_files(
 	return offsets;
 }
 
+static void
+toggle_sasl(bind_options *bo)
+{
+	if (bo->authmethod == LDAP_AUTH_SIMPLE) {
+		bo->authmethod = LDAP_AUTH_SASL;
+		puts("SASL authentication enabled.");
+		printf("SASL mechanism: %s (use '*' to change)\n",
+		       bo->sasl_mech ? bo->sasl_mech : "(none)");
+		puts("Type 'b' to log in.");
+	} else {
+		bo->authmethod = LDAP_AUTH_SIMPLE;
+		puts("Simple authentication enabled.  Type 'b' to log in.");
+	}
+}
+
+static void
+change_mechanism(bind_options *bo)
+{
+	if (bo->authmethod == LDAP_AUTH_SIMPLE) {
+		bo->authmethod = LDAP_AUTH_SASL;
+		puts("Switching to SASL authentication.");
+	}
+	bo->sasl_mech = getline("SASL mechanism", bo->sasl_mech);
+	puts("Type 'b' to log in.");
+}
+
 static int
 main_loop(LDAP *ld, cmdline *cmdline,
 	  tparser *parser, GArray *offsets, char *clean, char *data,
@@ -1415,10 +1582,13 @@ main_loop(LDAP *ld, cmdline *cmdline,
 		if (changed)
 			if (!analyze_changes(
 				    parser, offsets, clean, data, cmdline))
+			{
+				write_ldapvi_history();
 				return 0;
+			}
 		changed = 0;
 		switch (choose("Action?",
-			       "yYqQvVebrsf+?",
+			       "yYqQvVebB*rsf+?",
 			       "(Type '?' for help.)")) {
 		case 'Y':
 			continuous = 1;
@@ -1433,7 +1603,7 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			if (save_ldif(parser,
 				      offsets, clean, data,
 				      cmdline->server,
-				      cmdline->user,
+				      cmdline->bind_options.user,
 				      cmdline->managedsait))
 				break;
 			write_ldapvi_history();
@@ -1452,19 +1622,26 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			changed = 1;
 			break;
 		case 'b':
-			cmdline->user = login(ld, 0, 0, 1);
+			rebind(ld, &cmdline->bind_options, 1, 0, 1);
 			changed = 1; /* print stats again */
+			break;
+		case '*':
+			change_mechanism(&cmdline->bind_options);
+			break;
+		case 'B':
+			toggle_sasl(&cmdline->bind_options);
 			break;
 		case 'r':
 			ldap_unbind_s(ld);
 			ld = do_connect(
 				cmdline->server,
-				cmdline->user,
-				cmdline->password,
+				&cmdline->bind_options,
 				cmdline->referrals,
 				cmdline->starttls,
 				cmdline->tls,
-				cmdline->deref);
+				cmdline->deref,
+				1,
+				0);
 			printf("Connected to %s.\n", cmdline->server);
 			changed = 1; /* print stats again */
 			break;
@@ -1481,6 +1658,13 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			edit(data, 0);
 			changed = 1;
 			break;
+		case 'L' - '@':
+			{
+				char *clear = tigetstr("clear");
+				if (clear && clear != (char *) -1)
+					putp(clear);
+			}
+			break;
 		case '?':
 			puts("Commands:\n"
 			     "  y -- commit changes\n"
@@ -1490,7 +1674,9 @@ main_loop(LDAP *ld, cmdline *cmdline,
 			     "  v -- view changes as LDIF change records\n"
 			     "  V -- view changes as ldapvi change records\n"
 			     "  e -- open editor again\n"
-			     "  b -- ask for user name and rebind\n"
+			     "  b -- show login dialog and rebind\n"
+			     "  B -- toggle SASL\n"
+			     "  * -- set SASL mechanism\n"
 			     "  r -- reconnect to server\n"
 			     "  s -- skip one entry\n"
 			     "  f -- forget deletions\n"
@@ -1510,6 +1696,7 @@ main(int argc, const char **argv)
 	static char dir[] = "/tmp/ldapvi-XXXXXX";
 	char *clean;
 	char *data;
+	char *sasl;
 	GArray *offsets;
 	FILE *source_stream = 0;
 	FILE *target_stream = 0;
@@ -1542,15 +1729,19 @@ main(int argc, const char **argv)
 		parser = &ldapvi_parser;
 	read_ldapvi_history();
 
+	setupterm(0, 1, 0);
 	ld = do_connect(cmdline.server,
-			cmdline.user,
-			cmdline.password,
+			&cmdline.bind_options,
 			cmdline.referrals,
 			cmdline.starttls,
 			cmdline.tls,
-			cmdline.deref);
-	if (!ld) exit(1);
-	setupterm(0, 1, 0);
+			cmdline.deref,
+			cmdline.profileonlyp,
+			dir);
+	if (!ld) {
+		write_ldapvi_history();
+		exit(1);
+	}
 
 	if (cmdline.sortkeys)
 		append_sort_control(ld, ctrls, cmdline.sortkeys);
@@ -1565,6 +1756,7 @@ main(int argc, const char **argv)
 
 	if (cmdline.config) {
 		write_config(ld, target_stream, &cmdline);
+		write_ldapvi_history();
 		exit(0);
 	}
 
@@ -1579,19 +1771,17 @@ main(int argc, const char **argv)
 		       cmdline.mode == ldapvi_mode_out
 		       ? !cmdline.ldapvi
 		       : cmdline.ldif);
+		write_ldapvi_history();
 		exit(0);
 	}
 
-	mkdtemp(dir);
-	on_exit((on_exit_function) cleanup, dir);
-	signal(SIGTERM, cleanup_signal);
-	signal(SIGINT, cleanup_signal);
-	signal(SIGPIPE, SIG_IGN);
+	ensure_tmp_directory(dir);
 	clean = append(dir, "/clean");
 	data = append(dir, "/data");
+	sasl = append(dir, "/sasl");
 
 	offsets = main_write_files(
-		ld, &cmdline, clean, data, ctrls, source_stream,
+		ld, &cmdline, clean, data, sasl, ctrls, source_stream,
 		&nlines);
 
 	if (!cmdline.noninteractive) {
@@ -1599,6 +1789,7 @@ main(int argc, const char **argv)
 			FILE *tmp = fopen(data, "r");
 			if (!tmp) syserr();
 			fcopy(tmp, target_stream);
+			write_ldapvi_history();
 			exit(0);
 		}
 		edit(data, nlines + 1);
@@ -1606,8 +1797,10 @@ main(int argc, const char **argv)
 		yourfault("Cannot edit entries noninteractively.");
 
 	if (cmdline.noquestions) {
-		if (!analyze_changes(parser, offsets, clean, data, &cmdline))
+		if (!analyze_changes(parser, offsets, clean, data, &cmdline)) {
+			write_ldapvi_history();
 			return 0;
+		}
 		commit(parser, ld, offsets, clean, data, (void *) ctrls->pdata,
 		       cmdline.verbose, 1, cmdline.continuous, &cmdline);
 		fputs("Error in noninteractive mode, giving up.\n", stderr);

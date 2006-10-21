@@ -151,7 +151,7 @@ What now? [eQ?]</tty>
 	Regular usage: ldapvi has compared your changed file with the
 	original contents and reports on the changes found:
 	<tty><green>add: 2</green>, <blue>rename: 1</blue>, modify: 0, <red>delete: 1</red>
-Action? [yYqQvVebrsf?] </tty>
+Action? [yYqQvVebB*rsf+?] </tty>
       </li>
     </ul>
     <p>
@@ -178,12 +178,12 @@ Action? [yYqQvVebrsf?] </tty>
       at the top.  After changing the file, you will be back at the
       prompt.
     </p>
-    <tty>Action? [yYqQvVebrsf?] <b>y</b>
+    <tty>Action? [yYqQvVebB*rsf+?] <b>y</b>
 ldap_modify: Strong(er) authentication required (8)
         additional info: modifications require authentication
 Error at: cn=blub4,dc=lichteblau,dc=com
 add: 0, rename: 0, <yellow>modify: 1</yellow>, delete: 0
-Action? [yYqQvVebrsf?] </tty>
+Action? [yYqQvVebB*rsf+?] </tty>
     <ul>
       <li><tt>Y</tt> -- commit, ignoring errors<br/></li>
     </ul>
@@ -233,23 +233,6 @@ Action? [yYqQvVebrsf?] </tty>
       files.  The other is to simply start without authentication and
       login later.
     </p>
-    <ul>
-      <li><tt>b</tt> -- ask for user name and rebind</li>
-    </ul>
-    <p>
-      This option will ask for your user name and password.  The user
-      name can be either an DN or a search filter.  In the latter case,
-      it must be written with parentheses around it.
-    </p>
-    <tty>Action? [yYqQvVebrsf?] <b>b</b>
-Filter or DN: <b>(cn=admin)</b>
-Password: 
-OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
-    <p>
-      Note that the user name is saved into <tt>~/.ldapvi_history</tt>,
-      so after entering it once, C-p or "cursor up" will save you from
-      having to type it again.
-    </p>
     <p>
       When relying on binding after editing, keep in mind that some
       information will not be returned by the LDAP server unless user
@@ -257,8 +240,72 @@ OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
       a <tt>userPassword</tt> can usually only be displayed and edited
       if you are bound as that user or root upon startup.
     </p>
+    <ul>
+      <li><tt>b</tt> -- show login dialog and rebind</li>
+    </ul>
+    <p>
+      This option will ask for your user name and password (in the case
+      of simple authentication) or various SASL parameters (as
+      requested by the SASL library).
+    </p>
+    <p>
+      For simple authentication, the user name can be either an DN or a
+      search filter.  In the latter case, it must be written with
+      parentheses around it.
+    </p>
+    <tty>Action? [yYqQvVebB*rsf+?] <b>b</b>
 
-    <p title="&#34;That's not what I meant!&#34;">
+--- Login
+Type M-h for help on key bindings.
+
+Filter or DN: <b>(cn=admin)</b>
+    Password: <b>********</b>
+OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
+    <p>
+      Same example with SASL:
+    </p>
+    <tty>Action? [yYqQvVebB*rsf+?] <b>b</b>
+SASL/DIGEST-MD5 authentication started
+
+--- SASL login
+Type M-h for help on key bindings.
+
+ authorization name: 
+authentication name: <b>admin</b>
+           password: <b>********</b>
+SASL username: admin
+SASL SSF: 128
+SASL installing layers
+Bound as authzid=, authcid=admin.</tty>
+    <p>
+      Note that all non-password values are saved
+      into <tt>~/.ldapvi_history</tt>, so after entering them once,
+      "cursor up" or incremental search (<tt>C-r</tt>) will save you
+      from having to type them again.
+    </p>
+    <ul>
+      <li><tt>B</tt> -- toggle SASL</li>
+    </ul>
+    <p>
+      Use this key to switch between simple authentication and SASL at
+      run time:
+    </p>
+    <tty>Action? [yYqQvVebB*rsf+?] <b>B</b>
+SASL authentication enabled.
+SASL mechanism: DIGEST-MD5 (use '*' to change)
+Type 'b' to log in.</tty>
+    <ul>
+      <li><tt>*</tt> -- set SASL mechanism</li>
+    </ul>
+    <p>
+      When the SASL dialog is shown, it is too late to switch the SASL
+      mechanism.  Type <tt>*</tt> to set it at run time.
+    </p>
+    <tty>Action? [yYqQvVebB*rsf+?] <b>*</b>
+SASL mechanism: <b>DIGEST-MD5</b>
+Type 'b' to log in.</tty>
+
+    <p title="&#34;Oops&#34;">
       You can skip one change to proceed with the rest.
     </p>
     <ul>
@@ -291,7 +338,7 @@ OK, bound as cn=admin,dc=lichteblau,dc=com.</tty>
       name, and quit only then.  This way your changes do not get lost
       and you can feed them into ldapmodify at a later time.
     </p>
-    <tty>Action? [yYqQvVebrsf?] <b>q</b>
+    <tty>Action? [yYqQvVebB*rsf+?] <b>q</b>
 Your changes have been saved to ,ldapvi-xenon-20094.ldif.</tty>
 
 <!--
@@ -339,14 +386,48 @@ wofuer was das doch gleich da?
     </section>
 
     <section name="authentication" title="Authentication">
-      <p>Parameters for simple bind operations.</p>
       <p>
 	Note that you can also bind to the server interactively after
-	performing the search using
-	<a href="#key-b">the <tt>b</tt> command</a>.
+	performing the search using <a href="#key-b">the <tt>b</tt>
+	command</a>.
       </p>
+      <parameter long="bind" args="simple|sasl" brief="Disable or enable SASL">
+	<p>
+	  Initially, ldapvi defaults to simple authentication.  If any
+	  SASL parameter is given, the mode is set to <tt>sasl</tt>.
+	  Conversely, <a href="#parameter-user"><tt>-D</tt></a> sets it
+	  to <tt>simple</tt>.
+	</p>
+	<p>This parameter sets it explicitly.</p>
+      </parameter>
+      <parameter long="bind-dialog"
+		 args="never|auto|always"
+		 brief="Interactive login dialog">
+	<p>
+	  This option controls whether ldapvi will ask for
+	  authentication parameters interactively.
+	</p>
+	<p>
+	  The default is <tt>auto</tt>, which means that simple binds
+	  will be done interactively if a user name is provided but no
+	  password, and similarly for SASL.
+	</p>
+	<p>
+	  <tt>always</tt> forces display of a login dialog even if
+	  defaults are known.  <tt>never</tt> skips the login dialog
+	  completely.
+	</p>
+	<p>
+	  Note that this option has effect only for the initial bind
+	  operation.  In the main loop, all binds are done interactively.
+	</p>
+	<p>
+	  See also: <a href="#parameter-sasl-quiet"><tt>-Q</tt></a>
+	  and <a href="#parameter-sasl-interactive"><tt>-I</tt></a>.
+	</p>
+      </parameter>
       <parameter short="D" long="user" args="dn|filter"
-		 brief="User to bind as">
+		 brief="User to bind as (simple bind)">
 	The user name can be specified as a distinguished name
 	<code>uid=foo,ou=bar,dc=acme,dc=com</code>
 	or as a search filter
@@ -365,6 +446,86 @@ wofuer was das doch gleich da?
 		 brief="User's password">
 	Beware that passwords in a simple bind are transmitted in clear
 	text unless the connection is encrypted through SSL.
+	<p>
+	  This option is valid for both simple authorization and SASL.
+	</p>
+      </parameter>
+      <p title="SASL authentication">
+	If any of the SASL arguments is specified, ldapvi uses SASL
+	by default.
+      </p>
+      <p>
+	If you are unsure which SASL parameters to try for your server,
+	start with <tt>-Y DIGEST-MD5 -U <i>username</i></tt>.
+      </p>
+      <parameter short="I" long="sasl-interactive"
+		 brief="Use SASL Interactive mode">
+	Always ask for SASL parameters interactively.
+
+	<p>
+	  This option is an alias for
+	  <a href="#parameter-bind-dialog"><tt>--bind-dialog always</tt></a>
+	  and
+	  <a href="#parameter-bind"><tt>--bind sasl</tt></a>.
+	</p>
+      </parameter>
+      <parameter short="Q" long="sasl-quiet"
+		 brief="Use SASL Quiet mode">
+	Never ask for SASL parameters interactively at all.
+
+	<p>
+	  This option is an alias for
+	  <a href="#parameter-bind-dialog"><tt>--bind-dialog never</tt></a>
+	  and
+	  <a href="#parameter-bind"><tt>--bind sasl</tt></a>.
+	</p>
+      </parameter>
+      <parameter short="O" long="sasl-secprops" args="properties"
+		 brief="SASL security properties">
+	OpenLDAP's <a
+		      href="http://www.lichteblau.com/ldapvi/slapd.conf.5.txt">slapd.conf</a>(5)
+	manual page has some information on these (search for sasl-secprops).
+      </parameter>
+      <parameter short="R" long="sasl-realm" args="realm"
+		 brief="SASL realm">
+	The <a
+	href="http://www.lichteblau.com/ldapvi/cyrus-sasl/sysadmin.html#realms">SASL
+	realm</a> [Cyrus SASL documentation].
+      </parameter>
+      <parameter short="U"
+		 long="sasl-authcid"
+		 brief="SASL authentication identity"
+		 args="username">
+	The <a
+	href="http://www.lichteblau.com/ldapvi/cyrus-sasl/sysadmin.html#authid">authentication
+		 ID</a> [Cyrus SASL documentation].
+	<p>
+	  (Basically, your username.)
+	</p>
+      </parameter>
+      <parameter short="X"
+		 long="sasl-authzid"
+		 brief="SASL authorization identity"
+		 args="u:username|dn:dn">
+	The <a
+	href="http://www.lichteblau.com/ldapvi/cyrus-sasl/sysadmin.html#authid">authorization
+		 ID</a> [Cyrus SASL documentation].
+      	<p>
+	  (See <a
+	  href="http://www.openldap.org/doc/admin/sasl.html#SASL Proxy Authorization"
+		  >SASL Proxy Authorization</a>
+	  [openldap.org] in the OpenLDAP Administrator's Guide.)
+	</p>
+      </parameter>
+      <parameter short="Y"
+		 long="sasl-mech"
+		 brief="SASL mechanism"
+		 args="mechanism">
+      	<p>
+	  The SASL mechanism to use.  Possible values depend on the
+	  server, but <tt>DIGEST-MD5</tt> support is mandated by
+	  RFC&#160;2829 for all servers using passwords.
+	</p>
       </parameter>
     </section>
 
@@ -534,7 +695,7 @@ wofuer was das doch gleich da?
 	  than <tt>try</tt>.)
 	</p>
       </parameter>
-      <parameter short="R" long="read" args="DN" brief="Read this entry">
+      <parameter long="read" args="DN" brief="Read this entry">
 	A rather trivial option.  It means the same as:
 	<code>-b DN -s base '(objectclass=*)' + *</code>
       </parameter>
@@ -658,6 +819,13 @@ wofuer was das doch gleich da?
 	files do not exist, ldapvi falls back to <tt>libldap</tt>
 	configuration files.
       </li>
+      <li>
+	By default, if a profile is used, it suppresses loading of
+	the <tt>libldap</tt> configuration files <tt>/etc/ldap.conf</tt>
+	and <tt>~/.ldaprc</tt>.  If you want these files to take effect
+	anyway, you can set <tt><a href="#parameter-ldaprc">ldaprc</a>:
+	yes</tt> in the profile.
+      </li>
     </ul>
 
     <p title="Environment variables">The choice of text editor is made
@@ -699,7 +867,12 @@ wofuer was das doch gleich da?
     </p>
     <ul>
       <li>
-	The profile profile reads all entries from localhost.
+	The default profile falls back to <tt>libldap</tt>
+	configuration, but enables schema comments.
+      </li>
+      <li>
+	<tt>ldapvi -p otherhost</tt> profile reads all entries from
+	<tt>otherhost</tt>.
       </li>
       <li>
 	<tt>ldapvi -p adduser</tt> will open a template for a new user
@@ -711,7 +884,11 @@ wofuer was das doch gleich da?
       </li>
     </ul>
     <code>profile default
-host: ldap://localhost
+ldaprc: yes
+may: yes
+
+profile otherhost
+host: ldap://otherhost
 discover: yes
 
 profile adduser
