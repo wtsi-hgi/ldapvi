@@ -776,21 +776,17 @@ save_ldif(tparser *parser, GArray *offsets, char *clean, char *data,
 	if ( !(s = fdopen(fd, "w"))) syserr();
 
 	fputs("version: 1\n", s);
-	fputs("# apply these changes using ldapmodify(1) like this:\n", s);
-	fputs("# ldapmodify", s);
+	fputs("# to apply these changes using ldapvi, run:\n", s);
+	fputs("#   ldapvi --ldapmodify", s);
 	if (managedsait)
-		fputs(" -MM", s);
+		fputs(" -M", s);
 	if (server) {
 		fputs(" -h ", s);
 		fputs(server, s);
 	}
-	if (user) {
-		fputs(" -D ", s);
-		fputs(user, s);
-	}
-	fputs(" -f ", s);
+	fputc(' ', s);
 	fputs(name->str, s);
-	fputs("\n", s);
+	fputc('\n', s);
 
 	compare(parser, &ldif_handler, s, offsets, clean, data, 0, 0);
 	if (fclose(s) == EOF) syserr();

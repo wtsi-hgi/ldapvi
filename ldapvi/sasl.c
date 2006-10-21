@@ -150,12 +150,6 @@ ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
 	int i, j;
 	int n = 0, m = 0;
 
-#if 0
-	sasl_interact_t orig2 = interact[2];
-	interact[2].id = SASL_CB_NOECHOPROMPT;
-	interact[2].challenge = "hej ho";
-#endif
-
 	while (interact[n].id != SASL_CB_LIST_END) {
 		n++;
 		if (challengep(interact[n].id))
@@ -207,11 +201,6 @@ ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
 		interact[i].len = strlen(value);
 	}
 	free(d);
-
-#if 0
-	interact[2].id = orig2.id;
-	interact[2].challenge = orig2.challenge;
-#endif
 
 	if (redirected)
 		init_sasl_redirection(defaults, defaults->pathname);
