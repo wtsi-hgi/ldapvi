@@ -6,3 +6,4 @@
 #undef HAVE_GNUTLS
 #undef HAVE_SHA1
 #undef RAND_PSEUDO_BYTES
+#undef HAVE_SASL

@@ -19,7 +19,10 @@
 #include <curses.h>
 #include <signal.h>
 #include <term.h>
+#include "config.h"
+#ifdef HAVE_SASL
 #include <sasl/sasl.h>
+#endif
 #include "common.h"
 
 tsasl_defaults *
@@ -70,6 +73,17 @@ finish_sasl_redirection(tsasl_defaults *defaults)
 	close(defaults->fd);
 	defaults->fd = -1;
 }
+
+#ifndef HAVE_SASL
+
+int
+ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
+{
+	fputs("Error: ldapvi compiled without SASL support.\n", stderr);
+        return LDAP_OTHER;
+}
+
+#else
 
 static int
 process_default(sasl_interact_t *interact, tsasl_defaults *defaults)
@@ -206,3 +220,5 @@ ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
 		init_sasl_redirection(defaults, defaults->pathname);
 	return LDAP_SUCCESS;
 }
+
+#endif
