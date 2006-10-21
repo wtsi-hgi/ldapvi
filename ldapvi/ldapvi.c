@@ -1727,6 +1727,7 @@ main(int argc, const char **argv)
 	if (cmdline.noninteractive) {
 		cmdline.noquestions = 1;
 		cmdline.quiet = 1;
+		cmdline.bind_options.dialog = BD_NEVER;
 	}
 	if (cmdline.ldif)
 		parser = &ldif_parser;
