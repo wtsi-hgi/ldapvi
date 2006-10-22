@@ -582,15 +582,26 @@ dialog_rebuild(char *up, char *clreos,
 		putp(up);
 }
 
+static Keymap
+set_meta_keymap(Keymap keymap, Keymap meta_keymap)
+{
+	if (!meta_keymap)
+		meta_keymap = rl_copy_keymap((Keymap) keymap[27].function);
+	keymap[27].type = ISKMAP;
+	keymap[27].function = (rl_command_func_t *) meta_keymap;
+}
+
+
 static void
 init_dialog_keymap(Keymap keymap)
 {
+	Keymap meta_keymap = (Keymap) keymap[27].function;
 	rl_bind_key_in_map('L' - '@', cb_dialog_clear, keymap);
 	rl_bind_key_in_map('P' - '@', cb_dialog_prev, keymap);
 	rl_bind_key_in_map('N' - '@', cb_dialog_next, keymap);
-	rl_bind_key_in_map(128 + '\r', cb_dialog_done, keymap);
-	rl_bind_key_in_map(128 + 'g', cb_dialog_goto, keymap);
-	rl_bind_key_in_map(128 + 'h', cb_dialog_help, keymap);
+	rl_bind_key_in_map('\r', cb_dialog_done, meta_keymap);
+	rl_bind_key_in_map('g', cb_dialog_goto, meta_keymap);
+	rl_bind_key_in_map('h', cb_dialog_help, meta_keymap);
 }
 
 
@@ -619,9 +630,10 @@ dialog(char *header, tdialog *d, int n)
 		rl_initialize();
 		dialog_keymap = rl_copy_keymap(original_keymap);
 		dialog_empty_keymap = rl_make_bare_keymap();
+		set_meta_keymap(dialog_keymap, 0);
+		set_meta_keymap(dialog_empty_keymap, rl_make_bare_keymap());
 		init_dialog_keymap(dialog_keymap);
 		init_dialog_keymap(dialog_empty_keymap);
-		dialog_empty_keymap[27] = dialog_keymap[27];
 	}
 
 	rl_variable_bind("horizontal-scroll-mode", "on");
