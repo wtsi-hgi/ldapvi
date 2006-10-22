@@ -33,7 +33,7 @@ AC_CHECK_LIB([ldap],[ldap_initialize],,AC_MSG_ERROR([libldap present but obsolet
 AC_CHECK_LIB([ldap],[ldap_bv2dn_x],AC_DEFINE(LIBLDAP22),AC_DEFINE(LIBLDAP21))
 
 # sasl
-AC_CHECK_HEADER([sasl/sasl.h],AC_DEFINE(HAVE_SASL))
+AC_CHECK_HEADER([sasl/sasl.h],AC_DEFINE(HAVE_SASL),AC_MSG_WARN([SASL support disabled]))
 
 # terminfo
 AC_SEARCH_LIBS([tigetstr],[curses ncurses],,AC_MSG_ERROR([libcurses not found]))
