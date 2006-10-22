@@ -281,7 +281,7 @@ char *xdup(char *str);
 int adjoin_str(GPtrArray *, char *);
 int adjoin_ptr(GPtrArray *, void *);
 void init_dialog(tdialog *, enum dialog_mode, char *, char *);
-void dialog(char *header, tdialog *, int);
+void dialog(char *header, tdialog *, int, int);
 
 /*
  * schema.c

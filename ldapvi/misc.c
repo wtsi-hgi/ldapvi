@@ -319,7 +319,7 @@ getline(char *prompt, char *value)
 {
 	tdialog d;
 	init_dialog(&d, DIALOG_DEFAULT, prompt, value);
-	dialog(0, &d, 1);
+	dialog(0, &d, 1, 0);
 	return d.value ? d.value : xdup("");
 }
 
@@ -328,7 +328,7 @@ get_password()
 {
 	tdialog d;
 	init_dialog(&d, DIALOG_PASSWORD, "Password: ", "");
-	dialog(0, &d, 1);
+	dialog(0, &d, 1, 0);
 	return d.value ? d.value : xdup("");
 }
 
@@ -606,7 +606,7 @@ init_dialog_keymap(Keymap keymap)
 
 
 void
-dialog(char *header, tdialog *d, int n)
+dialog(char *header, tdialog *d, int n, int start)
 {
 	int i;
 	char *up = tigetstr("cuu1");
@@ -656,9 +656,9 @@ dialog(char *header, tdialog *d, int n)
 			d[i].value = xdup(d[i].value);
 	}
 
-	dialog_rebuild(up, clreos, header, prompts, d, n, 0, 0);
+	dialog_rebuild(up, clreos, header, prompts, d, n, start, 0);
 
-	i = 0;
+	i = start;
 	for (;;) {
 		char *orig = d[i].value;
 		int passwordp = d[i].mode == DIALOG_PASSWORD;

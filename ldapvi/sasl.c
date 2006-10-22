@@ -161,7 +161,7 @@ ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
 	tdialog *d;
 	int redirected = defaults->fd != -1;
 	int force_interactive = 0;
-	int i, j;
+	int i, j, start;
 	int n = 0, m = 0;
 
 	while (interact[n].id != SASL_CB_LIST_END) {
@@ -185,8 +185,10 @@ ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
 		finish_sasl_redirection(defaults);
 
 	d = xalloc(sizeof(tdialog) * (n + m));
+	start = -1; /* authcid if unset, else password if any, else first */
 	j = 0;
 	for (i = 0; i < n; i++) {
+		char *value = (char *) interact[i].result;
 		char *prompt = (char *) interact[i].prompt;
 		if (!strncmp(prompt, "Please enter your ", 18))
 			prompt += 18;
@@ -195,13 +197,17 @@ ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
 				    DIALOG_CHALLENGE,
 				    "Challenge",
 				    (char *) interact[i].challenge);
+		switch (interact[i].id) {
+		case SASL_CB_AUTHNAME: if (!value || !*value) start = j; break;
+		case SASL_CB_PASS: if (start == -1) start = j; break;
+		}
 		init_dialog(&d[j++],
 			    interact_mode(interact[i].id),
 			    prompt,
-			    (char *) interact[i].result);
+			    value);
 	}
 
-	dialog("--- SASL login", d, n + m);
+	dialog("--- SASL login", d, n + m, start == -1 ? 0 : start);
 	j = 0;
 	for (i = 0; i < n; i++) {
 		char *value;

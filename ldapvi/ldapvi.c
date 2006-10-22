@@ -633,7 +633,7 @@ rebind_simple(LDAP *ld, bind_options *bo, int verbose)
 		tdialog d[2];
 		init_dialog(d, DIALOG_DEFAULT, "Filter or DN", bo->user);
 		init_dialog(d + 1, DIALOG_PASSWORD, "Password", bo->password);
-		dialog("--- Login", d, 2);
+		dialog("--- Login", d, 2, bo->user ? 1 : 0);
 		bo->user = d[0].value;
 		bo->password = d[1].value;
 	}
