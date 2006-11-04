@@ -16,7 +16,10 @@ Prerequisites:
   - curses
   - GNU make
   - OpenSSL or GnuTLS, choose using ./configure --with-libcrypto
-  - GNU readline 5.1
+  - GNU readline
+  - Build dependency: SASL support is compiled into ldapvi if and only
+    if Cyrus SASL headers can be found.  (Whether libldap was compiled
+    with SASL support is only relevant at run time.)
 
 Tested on:
   Linux, Solaris, FreeBSD, IRIX, Cygwin

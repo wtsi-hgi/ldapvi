@@ -612,7 +612,10 @@ dialog(char *header, tdialog *d, int n, int start)
 	char *up = tigetstr("cuu1");
 	char *clreos = tigetstr("ed");
 	char *clear = tigetstr("clear");
+#if 0
 	char *hsm = rl_variable_value("horizontal-scroll-mode");
+#endif
+	char *hsm = "off";
 	Keymap original_keymap = rl_get_keymap();
 	int max = 0;
 	char **prompts;

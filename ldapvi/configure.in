@@ -44,7 +44,6 @@ AC_CHECK_LIB([popt],[poptGetContext],,AC_MSG_ERROR([libpopt not found]))
 
 # readline
 AC_CHECK_LIB([readline],[readline],,AC_MSG_ERROR([libreadline not found]))
-AC_CHECK_LIB([readline],[rl_variable_value],,AC_MSG_ERROR([libreadline too old]))
 
 # pkg-config
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)

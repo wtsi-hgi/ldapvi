@@ -39,17 +39,18 @@
 	  OpenSSL or GnuTLS, choose using
 	  <tt>./configure --with-libcrypto</tt>
 	</li>
-	<li>GNU readline 5.1</li>
+	<li>GNU readline</li>
+	<li>
+	  Build dependency: Cyrus SASL.  SASL support is disabled in
+	  ldapvi if Cyrus SASL headers cannot be found at compilation
+	  time.  (Whether libldap was compiled with SASL support is only
+	  relevant at run time.)
+	</li>
       </ul>
     </p>
     <p>
       Note that binaries compiled for libldap 2.1 will crash when ran
       with libldap 2.2.
-<!--
-    Blame OpenLDAP for changing their API
-      incompatibly (or praise them for fixing what was indeed terrible;
-      your choice).
-  -->
     </p>
     <p>
       The choice of GnuTLS over OpenSSL affects only the use of hashing
