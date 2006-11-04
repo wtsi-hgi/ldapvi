@@ -76,6 +76,8 @@ finish_sasl_redirection(tsasl_defaults *defaults)
 
 #ifndef HAVE_SASL
 
+#warning SASL support disabled
+
 int
 ldapvi_sasl_interact(LDAP *ld, unsigned flags, void *de, void *in)
 {

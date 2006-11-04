@@ -19,7 +19,7 @@ ldapvi: ldapvi.o data.o diff.o error.o misc.o parse.o port.o print.o search.o ba
 clean:
 	rm -f ldapvi *.o gmon.out
 
-ldapvi.1: ldapvi ldapvi.1.in
+ldapvi.1: version.h ldapvi ldapvi.1.in
 	help2man -n "LDAP client" -N ./ldapvi | cat - ldapvi.1.in >ldapvi.1.out
 	mv ldapvi.1.out ldapvi.1
 

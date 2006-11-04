@@ -1,4 +1,4 @@
-1.6 2006-10-21
+1.6 2006-11-04
 New features:
   - SASL support (thanks to Perry Nguyen)
     * new command line arguments -I, -Q, -O, -R, -Y, -X, -U, as well as
