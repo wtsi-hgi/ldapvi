@@ -1,3 +1,7 @@
+1.x
+Bugfixes:
+  - Fixed buffer overrun in home_filename(), thanks to Thomas Friebel.
+
 1.6 2006-11-04
 New features:
   - SASL support (thanks to Perry Nguyen)

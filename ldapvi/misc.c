@@ -277,7 +277,7 @@ home_filename(char *name)
 	}
 
 	n = strlen(home);
-	result = xalloc(n + 1 + strlen(name));
+	result = xalloc(n + 1 + strlen(name) + 1);
 	strcpy(result, home);
 	result[n] = '/';
 	strcpy(result + n + 1, name);
