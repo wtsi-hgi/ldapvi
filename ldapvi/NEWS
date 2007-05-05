@@ -1,5 +1,4 @@
-1.x
-Bugfixes:
+1.7 2007-05-05
   - Fixed buffer overrun in home_filename(), thanks to Thomas Friebel.
 
 1.6 2006-11-04
