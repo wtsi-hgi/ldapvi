@@ -1,3 +1,6 @@
+1.8 2007-mm-dd
+  - Preserve order of attribute values.
+
 1.7 2007-05-05
   - Fixed buffer overrun in home_filename(), thanks to Thomas Friebel.
 
