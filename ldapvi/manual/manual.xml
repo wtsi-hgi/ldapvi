@@ -451,6 +451,14 @@ wofuer was das doch gleich da?
 	  This option is valid for both simple authorization and SASL.
 	</p>
       </parameter>
+      <parameter short="y" long="password-file" args="filename"
+		 brief="File containing user's password">
+	Beware that passwords in a simple bind are transmitted in clear
+	text unless the connection is encrypted through SSL.
+	<p>
+	  This option is valid for both simple authorization and SASL.
+	</p>
+      </parameter>
       <p title="SASL authentication">
 	If any of the SASL arguments is specified, ldapvi uses SASL
 	by default.

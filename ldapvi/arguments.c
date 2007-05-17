@@ -40,6 +40,7 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "  -D, --user USER        Search filter or DN: User to bind as.     [1]\n"    \
 "                         Sets --bind simple.\n"                              \
 "  -w, --password SECRET  Password (also valid for SASL).\n"		      \
+"  -y, --password-file FILE  Password file (also valid for SASL).\n"	      \
 "      --bind [simple,sasl]\n"						      \
 "                         Disable or enable SASL.\n"			      \
 "      --bind-dialog [never,auto,always]\n"				      \
@@ -131,6 +132,7 @@ static struct poptOption options[] = {
 	{"sasl-authzid",'X', POPT_ARG_STRING, 0, 'X', 0, 0},
 	{"sasl-authcid",'U', POPT_ARG_STRING, 0, 'U', 0, 0},
 	{"password",	'w', POPT_ARG_STRING, 0, 'w', 0, 0},
+	{"password-file",'y',POPT_ARG_STRING, 0, 'y', 0, 0},
 	{"chase",	'C', POPT_ARG_STRING, 0, 'C', 0, 0},
 	{"deref",	'a', POPT_ARG_STRING, 0, 'a', 0, 0},
 	{"sort",	'S', POPT_ARG_STRING, 0, 'S', 0, 0},
@@ -232,6 +234,30 @@ init_cmdline(cmdline *cmdline)
 }
 
 static void
+read_password_file(bind_options *bind_options, char *filename)
+{
+	struct stat st;
+	int fd;
+	char *data;
+	char *ptr;
+
+	if (stat(filename, &st) == -1) {
+		fprintf(stderr, "Failed to stat password file: %s\n",
+			filename);
+		exit(1);
+	}
+	data = xalloc(st.st_size + 1);
+	if ( (fd = open(filename, O_RDONLY)) == -1) syserr();
+	if (read(fd, data, st.st_size) != st.st_size) syserr();
+	close(fd);
+	data[st.st_size] = 0;
+	if ( (ptr = strchr(data, '\n')))
+	     *ptr = 0;
+
+	bind_options->password = data;
+}
+
+static void
 parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 {
 	LDAPControl *control;
@@ -263,6 +289,9 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		break;
 	case 'w':
 		result->bind_options.password = arg;
+		break;
+	case 'y':
+		read_password_file(&result->bind_options, arg);
 		break;
 	case 'd':
 		result->discover = 1;
@@ -577,7 +606,7 @@ parse_configuration(char *profile_name, cmdline *result, GPtrArray *ctrls)
 		}
 		if (!p)
 			break;
-		if (strcmp(entry_dn(p), profile_name)) 
+		if (strcmp(entry_dn(p), profile_name))
 			entry_free(p);
 		else if (profile_found)
 			duplicate = 1;
@@ -683,7 +712,7 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 		break;
 	default:
 		abort();
-	}		
+	}
 
 	if (result->profileonlyp)
 		if (setenv("LDAPNOINIT", "thanks", 1)) syserr();
