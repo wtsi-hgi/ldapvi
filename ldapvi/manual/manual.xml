@@ -726,6 +726,10 @@ wofuer was das doch gleich da?
 		 suppress-configuration="suppress-configuration">
 	Print help on command line arguments.
       </parameter>
+      <parameter long="unpaged-help" brief="Disable pager for --help">
+	Disable the use of a pager
+	for <a href="#parameter-rename"><tt>--help</tt></a>.
+      </parameter>
       <parameter long="deleteoldrdn" brief="Delete the old RDN">
 	When changing the relative distinguished name to a new attribute
 	value, delete the old attribute value instead of keeping it.
@@ -840,7 +844,7 @@ wofuer was das doch gleich da?
 	By default, if a profile is used, it suppresses loading of
 	the <tt>libldap</tt> configuration files <tt>/etc/ldap.conf</tt>
 	and <tt>~/.ldaprc</tt>.  If you want these files to take effect
-	anyway, you can set <tt><a href="#parameter-ldaprc">ldaprc</a>:
+	anyway, you can set <tt><a href="#parameter-ldap-conf">ldap-conf</a>:
 	yes</tt> in the profile.
       </li>
     </ul>
@@ -901,7 +905,7 @@ wofuer was das doch gleich da?
       </li>
     </ul>
     <code>profile default
-ldaprc: yes
+ldap-conf: yes
 may: yes
 
 profile otherhost

@@ -116,7 +116,7 @@ enum ldapvi_option_numbers {
 	OPTION_NOQUESTIONS, OPTION_LDAPSEARCH, OPTION_LDAPMODIFY,
 	OPTION_LDAPDELETE, OPTION_LDAPMODDN, OPTION_LDAPMODRDN, OPTION_ADD,
 	OPTION_CONFIG, OPTION_READ, OPTION_LDAP_CONF, OPTION_BIND,
-	OPTION_BIND_DIALOG
+	OPTION_BIND_DIALOG, OPTION_UNPAGED_HELP
 };
 
 static struct poptOption options[] = {
@@ -172,14 +172,17 @@ static struct poptOption options[] = {
 	{"ldapdelete",	  0, 0, 0, OPTION_LDAPDELETE, 0, 0},
 	{"ldapmoddn",	  0, 0, 0, OPTION_LDAPMODDN, 0, 0},
 	{"ldapmodrdn",	  0, 0, 0, OPTION_LDAPMODRDN, 0, 0},
+	{"unpaged-help",  0, 0, 0, OPTION_UNPAGED_HELP, 0, 0},
 	{0, 0, 0, 0, 0}
 };
 
 
+static int usage_pagerp = 1;
+
 void
 usage(int fd, int rc)
 {
-	if (fd == -1 && rc == 0 && isatty(1)) {
+	if (usage_pagerp && fd == -1 && rc == 0 && isatty(1)) {
 		int fd;
 		int pid = pipeview(&fd);
 		write(fd, USAGE, strlen(USAGE));
@@ -507,6 +510,9 @@ parse_argument(int c, char *arg, cmdline *result, GPtrArray *ctrls)
 		break;
 	case OPTION_LDAP_CONF:
 		result->profileonlyp = 0;
+		break;
+	case OPTION_UNPAGED_HELP:
+		usage_pagerp = 0;
 		break;
 	case 'p':
 		parse_configuration(arg, result, ctrls);
