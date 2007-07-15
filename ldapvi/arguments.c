@@ -35,6 +35,9 @@ static void parse_configuration(char *, cmdline *, GPtrArray *);
 "       ldapvi --delete [OPTION]... DN...          Edit a delete record\n"    \
 "       ldapvi --rename [OPTION]... DN1 DN2        Edit a rename record\n"    \
 "\n"									      \
+"Configuration profiles:\n"						      \
+"  -p, --profile NAME     Section of ~/.ldapvirc or /etc/ldap.conf to use.\n" \
+"\n"									      \
 "Connection options:\n"							      \
 "  -h, --host URL         Server.\n"					      \
 "  -D, --user USER        Search filter or DN: User to bind as.     [1]\n"    \
