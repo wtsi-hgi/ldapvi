@@ -2,6 +2,8 @@
   - Preserve order of attribute values.
   - new command line argument -y (thanks to David Bartley)
   - new configuration option `unpaged-help'
+  - FreeBSD install(1) fix, thanks to Ulrich Spoerlein
+  - use $DESTDIR, thanks to Gavin Henry
 
 1.7 2007-05-05
   - Fixed buffer overrun in home_filename(), thanks to Thomas Friebel.
