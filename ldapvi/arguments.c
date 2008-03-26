@@ -724,7 +724,7 @@ parse_arguments(int argc, const char **argv, cmdline *result, GPtrArray *ctrls)
 	}
 
 	if (result->profileonlyp)
-		if (setenv("LDAPNOINIT", "thanks", 1)) syserr();
+		if (putenv("LDAPNOINIT=thanks")) syserr();
 
 	/* don't free! */
 /* 	poptFreeContext(ctx); */
