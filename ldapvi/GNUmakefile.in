@@ -25,10 +25,10 @@ ldapvi.1: version.h ldapvi ldapvi.1.in
 
 .PHONY: install
 install: ldapvi
-	mkdir -p $(DESTDIR)@bindir@ $(DESTDIR)@mandir@/man1/ $(DESTDIR)@prefix@/share/doc/ldapvi
-	@INSTALL_PROGRAM@ ldapvi $(DESTDIR)@bindir@
-	@INSTALL_DATA@ ldapvi.1 $(DESTDIR)@mandir@/man1/
-	@INSTALL_DATA@ manual/manual.css manual/manual.xml manual/bg.png manual/html.xsl $(DESTDIR)@prefix@/share/doc/ldapvi
+       mkdir -p $(DESTDIR)@bindir@ $(DESTDIR)@mandir@/man1/ $(DESTDIR)@docdir@
+       @INSTALL_PROGRAM@ ldapvi $(DESTDIR)@bindir@
+       @INSTALL_DATA@ ldapvi.1 $(DESTDIR)@mandir@/man1/
+       @INSTALL_DATA@ manual/manual.css manual/manual.xml manual/bg.png manual/html.xsl $(DESTDIR)@docdir@
 
 distclean:
-	rm -rf configure GNUmakefile config.h config.log autom4te.cache config.status
+       rm -rf configure GNUmakefile config.h config.log autom4te.cache config.status
