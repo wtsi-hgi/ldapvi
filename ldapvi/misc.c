@@ -315,7 +315,7 @@ write_ldapvi_history()
 }
 
 char *
-getline(char *prompt, char *value)
+ldapvi_getline(char *prompt, char *value)
 {
 	tdialog d;
 	init_dialog(&d, DIALOG_DEFAULT, prompt, value);

@@ -470,7 +470,7 @@ change_mechanism(bind_options *bo)
 		bo->authmethod = LDAP_AUTH_SASL;
 		puts("Switching to SASL authentication.");
 	}
-	bo->sasl_mech = getline("SASL mechanism", bo->sasl_mech);
+	bo->sasl_mech = ldapvi_getline("SASL mechanism", bo->sasl_mech);
 }
 
 static int
