@@ -172,9 +172,11 @@ edit(char *pathname, long line)
 		if (line > 0) {
 			char buf[20];
 			snprintf(buf, 20, "+%ld", line);
-			execlp(vi, vi, buf, pathname, (char *) NULL);
+			execl("/bin/sh", "sh", "-c", "exec $0 \"$@\"", vi,
+			      buf, pathname, (char *) NULL);
 		} else
-			execlp(vi, vi, pathname, (char *) NULL);
+			execl("/bin/sh", "sh", "-c", "exec $0 \"$@\"", vi,
+			      pathname, (char *) NULL);
 		syserr();
 	}
 
