@@ -172,9 +172,9 @@ edit(char *pathname, long line)
 		if (line > 0) {
 			char buf[20];
 			snprintf(buf, 20, "+%ld", line);
-			execlp(vi, vi, buf, pathname, 0);
+			execlp(vi, vi, buf, pathname, (char *) NULL);
 		} else
-			execlp(vi, vi, pathname, 0);
+			execlp(vi, vi, pathname, (char *) NULL);
 		syserr();
 	}
 
@@ -213,7 +213,7 @@ view(char *pathname)
 	case -1:
 		syserr();
 	case 0:
-		execlp(pg, pg, pathname, 0);
+		execlp(pg, pg, pathname, (char *) NULL);
 		syserr();
 	}
 
@@ -245,7 +245,7 @@ pipeview(int *fd)
 		close(fds[1]);
 		dup2(fds[0], 0);
 		close(fds[0]);
-		execlp(pg, pg, 0);
+		execlp(pg, pg, (char *) NULL);
 		syserr();
 	}
 
