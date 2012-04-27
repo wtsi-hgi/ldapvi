@@ -1414,7 +1414,12 @@ write_file_header(FILE *s, cmdline *cmdline)
 	int nlines = 0;
 
 	if (print_binary_mode == PRINT_UTF8 && !cmdline->ldif) {
-		fputs("# -*- coding: utf-8 -*- vim:encoding=utf-8:\n", s);
+		/* we used to write an encoding line for vim here, but
+		 * the "encoding" option affects more than just the file,
+		 * and a "fileencoding" doesn't actually seem exist.  Very
+		 * disappointing, but until a real solution turns up, it's
+		 * better to do nothing. */ 
+		fputs("# -*- coding: utf-8 -*-\n", s);
 		nlines++;
 	}
 	if (cmdline->ldif) {
