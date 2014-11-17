@@ -1,0 +1,17 @@
+# created by autoconf
+autom4te.cache/
+configure
+
+# created by configure
+GNUmakefile
+config.h
+config.log
+config.status
+error.o
+parse.o
+parseldif.o
+port.o
+
+# created by make
+*.o
+ldapvi
